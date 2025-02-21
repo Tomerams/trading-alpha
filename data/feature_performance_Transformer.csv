@@ -1,0 +1,128 @@
+features,net_profit,stock_profit
+"['RSI_above_70', 'SMA_50', 'Bollinger_Lower', 'Bollinger_Middle']",2560.9043721430735,1527.963829098205
+"['RSI_above_70', 'SMA_50', 'Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",2177.0949900405676,1527.963829098205
+"['RSI', 'Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",2138.2662890833935,1527.963829098205
+"['RSI_above_70', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Middle', 'Volatility']",1849.664039816547,1527.963829098205
+['Bollinger_Upper'],1527.963829098205,1527.963829098205
+['Bollinger_Lower'],1527.963829098205,1527.963829098205
+['Bollinger_Middle'],1527.963829098205,1527.963829098205
+['Volatility'],1527.963829098205,1527.963829098205
+"['SMA_50', 'Bollinger_Middle']",1527.963829098205,1527.963829098205
+"['SMA_50', 'Volatility']",1527.963829098205,1527.963829098205
+"['Bollinger_Upper', 'Volatility']",1527.963829098205,1527.963829098205
+"['Bollinger_Lower', 'Bollinger_Middle']",1527.963829098205,1527.963829098205
+"['Bollinger_Middle', 'Volatility']",1527.963829098205,1527.963829098205
+"['RSI', 'RSI_above_70', 'Bollinger_Upper']",1527.963829098205,1527.963829098205
+"['RSI', 'RSI_above_70', 'Bollinger_Middle']",1527.963829098205,1527.963829098205
+"['RSI', 'SMA_50', 'Volatility']",1527.963829098205,1527.963829098205
+"['RSI_above_70', 'SMA_50', 'Volatility']",1527.963829098205,1527.963829098205
+"['RSI_above_70', 'Bollinger_Upper', 'Bollinger_Middle']",1527.963829098205,1527.963829098205
+"['RSI_above_70', 'Bollinger_Upper', 'Volatility']",1527.963829098205,1527.963829098205
+"['RSI_above_70', 'Bollinger_Lower', 'Bollinger_Middle']",1527.963829098205,1527.963829098205
+"['SMA_50', 'Bollinger_Upper', 'Bollinger_Middle']",1527.963829098205,1527.963829098205
+"['SMA_50', 'Bollinger_Lower', 'Bollinger_Middle']",1527.963829098205,1527.963829098205
+"['RSI', 'RSI_above_70', 'Bollinger_Upper', 'Bollinger_Middle']",1527.963829098205,1527.963829098205
+"['RSI', 'Bollinger_Upper', 'Bollinger_Lower', 'Volatility']",1527.963829098205,1527.963829098205
+"['RSI_above_70', 'Bollinger_Upper', 'Bollinger_Lower', 'Volatility']",1527.963829098205,1527.963829098205
+"['SMA_50', 'Bollinger_Upper', 'Bollinger_Middle', 'Volatility']",1527.963829098205,1527.963829098205
+"['Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",1527.963829098205,1527.963829098205
+"['RSI_above_70', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Lower', 'Volatility']",1527.963829098205,1527.963829098205
+"['RSI_above_70', 'SMA_50', 'Bollinger_Upper', 'Volatility']",1465.087143614283,1527.963829098205
+"['RSI', 'SMA_50', 'Bollinger_Middle']",1408.767327776322,1527.963829098205
+"['RSI', 'Bollinger_Upper', 'Bollinger_Middle']",1375.7120425914518,1527.963829098205
+"['SMA_50', 'Bollinger_Middle', 'Volatility']",1299.3757467768703,1527.963829098205
+"['RSI', 'SMA_50', 'Bollinger_Upper', 'Volatility']",1252.6879720296574,1527.963829098205
+"['RSI', 'Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle']",1245.5166190144118,1527.963829098205
+"['RSI_above_70', 'SMA_50', 'Bollinger_Lower']",1165.769363636443,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",1097.73931607538,1527.963829098205
+"['RSI', 'Bollinger_Upper', 'Bollinger_Middle', 'Volatility']",1038.7538889219122,1527.963829098205
+"['Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",1004.5557355233096,1527.963829098205
+"['SMA_50', 'Bollinger_Upper', 'Bollinger_Lower', 'Volatility']",991.9940497934388,1527.963829098205
+"['RSI_above_70', 'Bollinger_Lower']",988.9563969411367,1527.963829098205
+"['Bollinger_Upper', 'Bollinger_Lower', 'Volatility']",946.340813710932,1527.963829098205
+"['SMA_50', 'Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",898.4210000150192,1527.963829098205
+"['RSI', 'SMA_50', 'Bollinger_Middle', 'Volatility']",835.7697585689373,1527.963829098205
+"['RSI', 'RSI_above_70', 'Bollinger_Upper', 'Bollinger_Middle', 'Volatility']",780.1294053699527,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Lower', 'Volatility']",691.5968598495464,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Lower']",604.9463027695498,1527.963829098205
+"['RSI', 'RSI_above_70']",603.4221230937391,1527.963829098205
+"['RSI', 'Bollinger_Middle', 'Volatility']",576.9025708723534,1527.963829098205
+"['RSI_above_70', 'SMA_50', 'Bollinger_Lower', 'Volatility']",559.3251687456842,1527.963829098205
+"['RSI', 'SMA_50', 'Bollinger_Lower']",410.35974568429106,1527.963829098205
+"['RSI', 'Bollinger_Upper', 'Volatility']",403.89643575539316,1527.963829098205
+"['RSI', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle']",392.9136860811215,1527.963829098205
+"['RSI_above_70', 'Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",369.51878770133624,1527.963829098205
+"['RSI_above_70', 'Bollinger_Upper', 'Bollinger_Middle', 'Volatility']",357.92550346283815,1527.963829098205
+"['RSI', 'Bollinger_Upper', 'Bollinger_Lower']",326.8128846141555,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50', 'Bollinger_Lower']",305.95254267819723,1527.963829098205
+"['RSI', 'Bollinger_Lower']",285.0016931282569,1527.963829098205
+"['RSI', 'Bollinger_Lower', 'Volatility']",238.06418448582693,1527.963829098205
+"['RSI', 'RSI_above_70', 'Bollinger_Middle', 'Volatility']",178.56994933285313,1527.963829098205
+"['SMA_50', 'Bollinger_Upper', 'Bollinger_Lower']",125.54771815510183,1527.963829098205
+"['RSI_above_70', 'SMA_50', 'Bollinger_Upper']",122.95091008486976,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Middle']",120.79784433617995,1527.963829098205
+"['RSI', 'Bollinger_Upper']",117.7585558417362,1527.963829098205
+"['RSI', 'RSI_above_70', 'Bollinger_Lower']",113.35244606823152,1527.963829098205
+"['RSI', 'SMA_50', 'Bollinger_Lower', 'Bollinger_Middle']",113.32173978790424,1527.963829098205
+"['RSI', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Lower', 'Volatility']",105.82961534379669,1527.963829098205
+"['RSI', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Middle']",101.19878418586711,1527.963829098205
+"['RSI', 'Volatility']",86.8094616516912,1527.963829098205
+"['RSI', 'RSI_above_70', 'Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",65.09223371400476,1527.963829098205
+"['SMA_50', 'Bollinger_Lower']",60.598429184865886,1527.963829098205
+"['RSI', 'SMA_50', 'Bollinger_Upper']",45.70248629627966,1527.963829098205
+"['RSI_above_70', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",45.00420665520158,1527.963829098205
+"['RSI', 'RSI_above_70', 'Volatility']",43.72765769716421,1527.963829098205
+"['RSI', 'RSI_above_70', 'Bollinger_Upper', 'Bollinger_Lower', 'Volatility']",40.57009771323401,1527.963829098205
+"['RSI', 'RSI_above_70', 'Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",40.44992532960392,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50', 'Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",34.606798019843865,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50', 'Bollinger_Middle']",27.889402990256002,1527.963829098205
+"['RSI', 'SMA_50']",21.25431684148678,1527.963829098205
+"['Bollinger_Upper', 'Bollinger_Middle', 'Volatility']",20.98595672397252,1527.963829098205
+"['RSI', 'RSI_above_70', 'Bollinger_Upper', 'Volatility']",16.211762266642964,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50']",12.181675812868962,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50', 'Bollinger_Lower', 'Volatility']",10.124436857374421,1527.963829098205
+"['RSI', 'Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",8.524401736580458,1527.963829098205
+"['SMA_50', 'Bollinger_Lower', 'Volatility']",7.602871208571342,1527.963829098205
+"['Bollinger_Upper', 'Bollinger_Lower']",6.121091810264424,1527.963829098205
+"['Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle']",5.17136721343959,1527.963829098205
+"['RSI', 'RSI_above_70', 'Bollinger_Lower', 'Volatility']",4.629028991374762,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Middle', 'Volatility']",3.469828919578013,1527.963829098205
+['RSI'],0.0,1527.963829098205
+['RSI_above_70'],0.0,1527.963829098205
+['SMA_50'],0.0,1527.963829098205
+"['RSI_above_70', 'SMA_50']",0.0,1527.963829098205
+"['RSI_above_70', 'Bollinger_Upper']",0.0,1527.963829098205
+"['RSI_above_70', 'Volatility']",0.0,1527.963829098205
+"['SMA_50', 'Bollinger_Upper']",0.0,1527.963829098205
+"['Bollinger_Upper', 'Bollinger_Middle']",0.0,1527.963829098205
+"['RSI', 'Bollinger_Lower', 'Bollinger_Middle']",0.0,1527.963829098205
+"['RSI_above_70', 'SMA_50', 'Bollinger_Middle']",0.0,1527.963829098205
+"['RSI_above_70', 'Bollinger_Upper', 'Bollinger_Lower']",0.0,1527.963829098205
+"['SMA_50', 'Bollinger_Upper', 'Volatility']",0.0,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50', 'Volatility']",0.0,1527.963829098205
+"['RSI', 'RSI_above_70', 'Bollinger_Upper', 'Bollinger_Lower']",0.0,1527.963829098205
+"['RSI', 'RSI_above_70', 'Bollinger_Lower', 'Bollinger_Middle']",0.0,1527.963829098205
+"['RSI', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Lower']",0.0,1527.963829098205
+"['RSI_above_70', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Lower']",0.0,1527.963829098205
+"['RSI_above_70', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Middle']",0.0,1527.963829098205
+"['RSI_above_70', 'SMA_50', 'Bollinger_Middle', 'Volatility']",0.0,1527.963829098205
+"['RSI_above_70', 'Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle']",0.0,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50', 'Bollinger_Upper', 'Volatility']",0.0,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50', 'Bollinger_Lower', 'Bollinger_Middle']",0.0,1527.963829098205
+"['RSI', 'RSI_above_70', 'Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle']",0.0,1527.963829098205
+"['RSI', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Middle', 'Volatility']",0.0,1527.963829098205
+"['SMA_50', 'Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",-0.058666455845850576,1527.963829098205
+"['SMA_50', 'Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle']",-3.0486144929197327,1527.963829098205
+"['RSI_above_70', 'Bollinger_Middle', 'Volatility']",-5.4532608657029416,1527.963829098205
+"['RSI_above_70', 'Bollinger_Lower', 'Volatility']",-5.816311307468641,1527.963829098205
+"['RSI', 'Bollinger_Middle']",-13.797264417413535,1527.963829098205
+"['RSI_above_70', 'Bollinger_Middle']",-13.971324960723233,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50', 'Bollinger_Upper']",-19.436587933222775,1527.963829098205
+"['Bollinger_Lower', 'Volatility']",-30.324409850575613,1527.963829098205
+"['RSI_above_70', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle']",-34.11779963587417,1527.963829098205
+"['RSI', 'SMA_50', 'Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",-35.306872887942596,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle']",-42.434073228094945,1527.963829098205
+"['RSI', 'SMA_50', 'Bollinger_Lower', 'Volatility']",-45.17512868239733,1527.963829098205
+"['RSI', 'RSI_above_70', 'SMA_50', 'Bollinger_Middle', 'Volatility']",-51.97562896826463,1527.963829098205
+"['RSI', 'SMA_50', 'Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",-52.23904622165607,1527.963829098205
+"['RSI_above_70', 'Bollinger_Upper', 'Bollinger_Lower', 'Bollinger_Middle', 'Volatility']",-55.95257474276145,1527.963829098205
