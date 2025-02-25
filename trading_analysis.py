@@ -105,7 +105,7 @@ def fetch_index_quarterly_returns(ticker, start_date, end_date):
         raise KeyError(f"❌ No 'Close' column found in data for {ticker}!")
 
     close_prices = hist[close_column[0]]
-    returns = close_prices.pct_change() * 100 
+    returns = close_prices.pct_change() * 100
 
     print("\n📌 Quarterly Returns Calculated:")
     print(returns)

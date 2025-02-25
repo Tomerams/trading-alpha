@@ -4,9 +4,9 @@ import logging
 from data_processing import get_data
 from config import BACKTEST_PARAMS
 from utilities import load_model
+from sklearn.metrics import precision_score, recall_score
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
 
 def backtest_model(stock_ticker, start_date, end_date, trained_model, data_scaler, selected_features):
     df = get_data(stock_ticker, start_date, end_date)
@@ -27,12 +27,16 @@ def backtest_model(stock_ticker, start_date, end_date, trained_model, data_scale
 
     df["Predicted_Return"] = predictions
     df["Predicted_Close"] = df["Close"] * (1 + df["Predicted_Return"])
+    df["Predicted_Direction"] = (df["Predicted_Return"] > 0).astype(int)
+    df["Actual_Direction"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
+
+    df.dropna(subset=["Actual_Direction", "Predicted_Direction"], inplace=True)
 
     cash = BACKTEST_PARAMS["initial_balance"]
     shares = 0
     last_buy_price = None
     peak_value = cash
-    max_loss_per_trade = 0  # Track maximum loss per trade
+    max_loss_per_trade = 0
 
     for i in range(len(df) - 1):
         trade_date = df.index[i]
@@ -47,8 +51,10 @@ def backtest_model(stock_ticker, start_date, end_date, trained_model, data_scale
             if shares > 0
             else 0
         )
+        buying_threshold = 0.005
+        selling_threshold = -0.01
 
-        if predicted_return > 0 and cash > price + transaction_fee:  # BUY Condition
+        if predicted_return > buying_threshold and shares == 0:
             shares = cash / (price + transaction_fee)
             cash = 0
             last_buy_price = price
@@ -63,14 +69,13 @@ def backtest_model(stock_ticker, start_date, end_date, trained_model, data_scale
                 ]
             )
 
-        elif predicted_return < 0 and shares > 0:  # SELL Condition
+        elif predicted_return < selling_threshold and shares > 0:
             sell_price = price
             cash = (shares * sell_price) - transaction_fee
             shares = 0
             price_change = ((sell_price - last_buy_price) / last_buy_price) * 100 if last_buy_price else None
             portfolio_gain = ((cash - BACKTEST_PARAMS["initial_balance"]) / BACKTEST_PARAMS["initial_balance"]) * 100
 
-            # Track the maximum loss per trade
             if price_change and price_change < 0:
                 max_loss_per_trade = min(max_loss_per_trade, price_change)
 
@@ -80,9 +85,10 @@ def backtest_model(stock_ticker, start_date, end_date, trained_model, data_scale
 
     total_value = cash + (shares * df.iloc[-1]["Close"])
     net_profit = ((total_value - BACKTEST_PARAMS["initial_balance"]) / BACKTEST_PARAMS["initial_balance"]) * 100
-
-    # Calculate the ticker's percentage change
     ticker_change = ((df["Close"].iloc[-1] - df["Close"].iloc[0]) / df["Close"].iloc[0]) * 100
+
+    precision = precision_score(df["Actual_Direction"], df["Predicted_Direction"], zero_division=0)
+    recall = recall_score(df["Actual_Direction"], df["Predicted_Direction"], zero_division=0)
 
     trade_df = pd.DataFrame(
         trade_log,
@@ -101,19 +107,20 @@ def backtest_model(stock_ticker, start_date, end_date, trained_model, data_scale
     print(f"📉 Ticker Change: {ticker_change:.2f}%")
     print(f"📈 Portfolio Change: {net_profit:.2f}%")
     print(f"⚠️ Maximum Loss per Trade: {max_loss_per_trade:.2f}%")
+    print(f"🎯 Precision: {precision:.4f}")
+    print(f"🔍 Recall: {recall:.4f}")
 
-    return net_profit, trade_df, ticker_change, max_loss_per_trade
-
+    return net_profit, trade_df, ticker_change, max_loss_per_trade, precision, recall
 
 if __name__ == "__main__":
     ticker = "TQQQ"
-    start_date = "2023-01-01"
+    start_date = "2020-01-01"
     end_date = "2025-01-01"
     model_type = "TransformerRNN"
     trained_model, data_scaler, best_features = load_model(ticker, model_type)
 
     print("🚀 Running Backtest Using Trained Model...")
-    net_profit, trade_df, ticker_change, max_loss_per_trade = backtest_model(
+    net_profit, trade_df, ticker_change, max_loss_per_trade, precision, recall = backtest_model(
         ticker, start_date, end_date, trained_model, data_scaler, best_features
     )
 

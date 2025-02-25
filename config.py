@@ -11,9 +11,7 @@ class Indicator(Enum):
     RSI_CROSS_DOWN_70 = "RSI_cross_down_70"
     RSI_CROSS_UP_30 = "RSI_cross_up_30"
     SMA_50 = "SMA_50"
-    SMA_200 = "SMA_200"
     EMA_50 = "EMA_50"
-    EMA_200 = "EMA_200"
     BOLLINGER_UPPER = "Bollinger_Upper"
     BOLLINGER_LOWER = "Bollinger_Lower"
     BOLLINGER_MIDDLE = "Bollinger_Middle"
@@ -26,9 +24,6 @@ class Indicator(Enum):
     ADX = "ADX"
     VWAP = "VWAP"
     ATR = "ATR"
-    PE_RATIO = "P/E_Ratio"
-    EPS = "EPS"
-    DEBT_TO_EQUITY = "Debt_to_Equity"
     BOLLINGER_2PCT_LOWER = "Bollinger_2pct_Lower"
     RSI_2_ABOVE_90 = "RSI_2_above_90"
     RS_2_BELOW_10 = "RSI_2_below_10"
@@ -37,41 +32,27 @@ class Indicator(Enum):
     STOCHASTIC_K = "Stochastic_K"
     STOCHASTIC_D = "Stochastic_D"
     STOCHASTIC_RSI = "Stoch_RSI"
+    CCI = "CCI"
+    ROC = "ROC"
+    WILLIAMS_R = "Williams_%R"
+    TRIX = "TRIX"
+    TSI = "TSI"
 
 
-FEATURE_COLUMNS = [
-    Indicator.RSI.value,
-    Indicator.RSI_2.value,
-    Indicator.RSI_ABOVE_70.value,
-    Indicator.RSI_BELOW_30.value,
-    Indicator.RSI_SLOPE.value,
-    Indicator.RSI_DIVERGENCE.value,
-    Indicator.RS_2_BELOW_10.value,
-    Indicator.RSI_2_ABOVE_90.value,
-    Indicator.RSI_2_CROSS_10.value,
-    Indicator.RSI_2_CROSS_90.value,
-    Indicator.STOCHASTIC_K.value,
-    Indicator.STOCHASTIC_D.value,
-    Indicator.STOCHASTIC_RSI.value,
-    # Indicator.SMA_50.value,
-    # Indicator.SMA_200.value,
-    # Indicator.EMA_50.value,
-    # Indicator.EMA_200.value,
-    # Indicator.BOLLINGER_UPPER.value,
-    # Indicator.BOLLINGER_LOWER.value,
-    # Indicator.BOLLINGER_MIDDLE.value,
-    Indicator.MOMENTUM.value,
-    Indicator.VOLATILITY.value,
-    Indicator.MACD.value,
-    Indicator.MACD_SIGNAL.value,
-    Indicator.MACD_HIST.value,
-    Indicator.ADX.value,
-    # Indicator.VWAP.value,
-    # Indicator.ATR.value,
-]
+class Pattern(Enum):
+    DOUBLE_TOP = "double_top"
+    HEAD_SHOULDERS = "head_and_shoulders"
+    CUP_HANDLE = "cup_and_handle"
+    TRIPLE_TOP = "triple_top"
+    TRIPLE_BOTTOM = "triple_bottm"
+    BULLISH_ENGULFING = "bullish_engulfing"
+    BEARISH_ENGULFING = "bearish_engulfing"
+
+
+FEATURE_COLUMNS = [*[indicator.value for indicator in Indicator], *[pattern.value for pattern in Pattern]]
 
 MODEL_PARAMS = {
-    "hidden_size": 64,
+    "hidden_size": 32,
     "output_size": 1,
     "learning_rate": 0.001,
     "epochs": 100,

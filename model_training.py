@@ -22,7 +22,6 @@ def train_and_evaluate(
     selected_features: list = None,
     save_model: bool = True,
 ):
-    """Train a new trading model and evaluate it using backtesting."""
     if selected_features is None:
         selected_features = FEATURE_COLUMNS
 
