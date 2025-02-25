@@ -47,16 +47,12 @@ def load_model(ticker, model_type):
         or not os.path.exists(scaler_filename)
         or not os.path.exists(features_filename)
     ):
-        raise FileNotFoundError(
-            f"❌ Model files for {ticker}-{model_type} not found! Train the model first."
-        )
+        raise FileNotFoundError(f"❌ Model files for {ticker}-{model_type} not found! Train the model first.")
 
     checkpoint = torch.load(model_filename, map_location=torch.device("cpu"))
 
     if "model_state_dict" not in checkpoint:
-        raise KeyError(
-            f"❌ Invalid model file: {model_filename}. The key 'model_state_dict' is missing!"
-        )
+        raise KeyError(f"❌ Invalid model file: {model_filename}. The key 'model_state_dict' is missing!")
 
     features = joblib.load(features_filename)
     scaler = joblib.load(scaler_filename)
@@ -66,5 +62,3 @@ def load_model(ticker, model_type):
     model.eval()
 
     return model, scaler, features
-
-

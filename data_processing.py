@@ -1,8 +1,7 @@
-
 import ta.momentum
 import yfinance as yf
 import ta.volatility
-import ta.trend 
+import ta.trend
 import ta
 import pandas as pd
 import numpy as np
@@ -12,11 +11,9 @@ from config import FEATURE_COLUMNS, Indicator
 def get_data(stock_ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
     """Retrieve historical market data for a given stock_ticker and date range."""
     df = yf.download(stock_ticker, start=start_date, end=end_date, interval="1d")
-          
+
     if df.empty:
-        raise ValueError(
-            f"No data retrieved for {stock_ticker}. Check the stock_ticker symbol and date range."
-        )
+        raise ValueError(f"No data retrieved for {stock_ticker}. Check the stock_ticker symbol and date range.")
 
     df.index = pd.to_datetime(df.index)
     df = df.sort_index()
@@ -38,8 +35,6 @@ def get_data(stock_ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
 
     df.dropna(inplace=True)
 
-
-
     df.to_csv(f"data/{stock_ticker}_indicators_data.csv")
 
     import seaborn as sns
@@ -51,9 +46,7 @@ def get_data(stock_ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
 def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     rsi = ta.momentum.rsi(df["Close"], window=14)
     rsi_2 = ta.momentum.rsi(df["Close"], window=2)
-    stochastic_k = ta.momentum.stoch(
-        df["High"], df["Low"], df["Close"], window=14, smooth_window=3
-    )
+    stochastic_k = ta.momentum.stoch(df["High"], df["Low"], df["Close"], window=14, smooth_window=3)
 
     if Indicator.RSI.value in FEATURE_COLUMNS:
         df["RSI"] = rsi
@@ -89,22 +82,16 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
         df["RSI_slope"] = rsi.diff()
 
     if Indicator.RSI_DIVERGENCE.value in FEATURE_COLUMNS:
-        df["RSI_divergence"] = (
-            (rsi.shift(1) > rsi.shift(2)) & (rsi < rsi.shift(1))
-        ).astype(int)
+        df["RSI_divergence"] = ((rsi.shift(1) > rsi.shift(2)) & (rsi < rsi.shift(1))).astype(int)
 
     if Indicator.BOLLINGER_MIDDLE.value in FEATURE_COLUMNS:
         df["Bollinger_Middle"] = df["Close"].rolling(window=20).mean()
 
     if Indicator.BOLLINGER_UPPER.value in FEATURE_COLUMNS:
-        df["Bollinger_Upper"] = df["Close"].rolling(window=20).mean() + (
-            df["Close"].rolling(window=20).std() * 2
-        )
+        df["Bollinger_Upper"] = df["Close"].rolling(window=20).mean() + (df["Close"].rolling(window=20).std() * 2)
 
     if Indicator.BOLLINGER_LOWER.value in FEATURE_COLUMNS:
-        df["Bollinger_Lower"] = df["Close"].rolling(window=20).mean() - (
-            df["Close"].rolling(window=20).std() * 2
-        )
+        df["Bollinger_Lower"] = df["Close"].rolling(window=20).mean() - (df["Close"].rolling(window=20).std() * 2)
 
     if Indicator.SMA_50.value in FEATURE_COLUMNS:
         df["SMA_50"] = df["Close"].rolling(window=50).mean()
@@ -146,11 +133,7 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
         df["Stochastic_D"] = stochastic_k.rolling(window=3).mean()
 
     if Indicator.STOCHASTIC_RSI.value in FEATURE_COLUMNS:
-        df["Stoch_RSI"] = ta.momentum.stochrsi(
-            df["Close"], window=14, smooth1=3, smooth2=3
-        )
-
-
+        df["Stoch_RSI"] = ta.momentum.stochrsi(df["Close"], window=14, smooth1=3, smooth2=3)
 
     return df
 
@@ -163,5 +146,3 @@ if __name__ == "__main__":
     }
 
     get_data(**CONFIG)
-
-

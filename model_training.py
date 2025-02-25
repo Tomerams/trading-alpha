@@ -1,7 +1,6 @@
 import os
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import logging
 import joblib
 from torch.utils.data import DataLoader, TensorDataset
@@ -12,9 +11,7 @@ from utilities import get_model
 from data_processing import get_data
 from model_backtest import backtest_model
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 def train_and_evaluate(
@@ -41,19 +38,13 @@ def train_and_evaluate(
     scaler = StandardScaler()
     X = scaler.fit_transform(X)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
-    X_train, X_test = torch.tensor(X_train, dtype=torch.float32), torch.tensor(
-        X_test, dtype=torch.float32
-    )
-    y_train, y_test = torch.tensor(y_train, dtype=torch.float32).view(
-        -1, 1
-    ), torch.tensor(y_test, dtype=torch.float32).view(-1, 1)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train, X_test = torch.tensor(X_train, dtype=torch.float32), torch.tensor(X_test, dtype=torch.float32)
+    y_train, y_test = torch.tensor(y_train, dtype=torch.float32).view(-1, 1), torch.tensor(
+        y_test, dtype=torch.float32
+    ).view(-1, 1)
 
-    train_loader = DataLoader(
-        TensorDataset(X_train, y_train), batch_size=32, shuffle=True
-    )
+    train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=32, shuffle=True)
 
     logging.info("🚀 Training a new model (ignoring existing models)")
     model = get_model(input_size=len(existing_features), model_type=model_type)
@@ -97,9 +88,7 @@ def train_and_evaluate(
 
     logging.info("📊 Running backtest for trained model...")
 
-    net_profit, stock_profit = backtest_model(
-        stock_ticker, start_date, end_date, model, scaler, selected_features
-    )
+    net_profit, stock_profit = backtest_model(stock_ticker, start_date, end_date, model, scaler, selected_features)
 
     return {
         "features": existing_features,
@@ -114,8 +103,6 @@ if __name__ == "__main__":
     end_date = "2023-01-01"
     model_type = "TransformerRNN"
 
-    print(
-        f"🎯 Training {model_type} model for {stock_ticker} from {start_date} to {end_date}..."
-    )
+    print(f"🎯 Training {model_type} model for {stock_ticker} from {start_date} to {end_date}...")
     training_result = train_and_evaluate(stock_ticker, start_date, end_date, model_type)
     print(f"✅ Training complete! Results: {training_result}")

@@ -52,9 +52,7 @@ def fetch_quarterly_returns_bulk(tickers, quarter):
     quarter_start = quarter.strftime("%Y-%m-%d")
     quarter_end = (quarter + QuarterEnd(0)).strftime("%Y-%m-%d")  # ✅ Correct end date
 
-    print(
-        f"📌 Fetching stock data for {quarter_start} to {quarter_end} for tickers: {tickers}"
-    )
+    print(f"📌 Fetching stock data for {quarter_start} to {quarter_end} for tickers: {tickers}")
 
     hist = yf.download(
         tickers,
@@ -107,7 +105,7 @@ def fetch_index_quarterly_returns(ticker, start_date, end_date):
         raise KeyError(f"❌ No 'Close' column found in data for {ticker}!")
 
     close_prices = hist[close_column[0]]
-    returns = close_prices.pct_change() * 100  # ✅ Calculate quarterly returns
+    returns = close_prices.pct_change() * 100 
 
     print("\n📌 Quarterly Returns Calculated:")
     print(returns)
@@ -115,7 +113,6 @@ def fetch_index_quarterly_returns(ticker, start_date, end_date):
     return returns.fillna(0)
 
 
-# ✅ Process Quarterly Data & Select Top Stocks
 start_date = "2024-01-01"
 end_date = "2024-12-31"
 
@@ -123,14 +120,10 @@ all_tickers = get_all_nasdaq100_tickers(start_date, end_date)
 growth_estimates = fetch_analyst_growth_bulk(all_tickers)
 
 sp500_quarterly_returns = fetch_index_quarterly_returns("^GSPC", start_date, end_date)
-nasdaq100_quarterly_returns = fetch_index_quarterly_returns(
-    "^NDX", start_date, end_date
-)
+nasdaq100_quarterly_returns = fetch_index_quarterly_returns("^NDX", start_date, end_date)
 
 sp500_quarterly_returns.index = pd.to_datetime(sp500_quarterly_returns.index)
-sp500_quarterly_returns = sp500_quarterly_returns[
-    sp500_quarterly_returns.index >= start_date
-]
+sp500_quarterly_returns = sp500_quarterly_returns[sp500_quarterly_returns.index >= start_date]
 
 all_results = []
 
@@ -138,9 +131,7 @@ for quarter in sp500_quarterly_returns.index:
     print(f"📌 Processing {quarter}...")
 
     try:
-        top_growth_tickers = sorted(
-            growth_estimates, key=growth_estimates.get, reverse=True
-        )[:10]
+        top_growth_tickers = sorted(growth_estimates, key=growth_estimates.get, reverse=True)[:10]
 
         if not top_growth_tickers:
             raise Exception(f"No valid top 10 tickers found for {quarter}")
@@ -149,9 +140,7 @@ for quarter in sp500_quarterly_returns.index:
 
         # ✅ Fix: Ensure we only calculate mean for valid returns
         top_returns_values = list(top_returns.values())
-        avg_return = sum(top_returns_values) / len(
-            [x for x in top_returns_values if x != 0]
-        )
+        avg_return = sum(top_returns_values) / len([x for x in top_returns_values if x != 0])
 
         print(f"✅ Top 10 Tickers for {quarter}: {top_growth_tickers}")
         print(f"✅ Average Return for Top 10: {avg_return}")
@@ -159,9 +148,7 @@ for quarter in sp500_quarterly_returns.index:
         quarter_data = {
             "Quarter": f"Q{quarter.quarter} {quarter.year}",
             "S&P 500 Quarterly Return (%)": sp500_quarterly_returns.get(quarter, 0),
-            "NASDAQ-100 Quarterly Return (%)": nasdaq100_quarterly_returns.get(
-                quarter, 0
-            ),
+            "NASDAQ-100 Quarterly Return (%)": nasdaq100_quarterly_returns.get(quarter, 0),
             "Top 10 Tickers": ", ".join(top_growth_tickers),
             "Average Return of Top 10 (%)": avg_return,
         }

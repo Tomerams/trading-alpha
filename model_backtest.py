@@ -5,13 +5,10 @@ from data_processing import get_data
 from config import BACKTEST_PARAMS
 from utilities import load_model
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-def backtest_model(
-    stock_ticker, start_date, end_date, trained_model, data_scaler, selected_features
-):
+
+def backtest_model(stock_ticker, start_date, end_date, trained_model, data_scaler, selected_features):
     df = get_data(stock_ticker, start_date, end_date)
     if df is None or df.empty:
         raise ValueError("No data available after applying the date range.")
@@ -23,9 +20,7 @@ def backtest_model(
 
     X = df[selected_features].values
     X_scaled = data_scaler.transform(X)
-    X_tensor = torch.tensor(X_scaled, dtype=torch.float32).view(
-        X_scaled.shape[0], 1, X_scaled.shape[1]
-    )
+    X_tensor = torch.tensor(X_scaled, dtype=torch.float32).view(X_scaled.shape[0], 1, X_scaled.shape[1])
 
     with torch.no_grad():
         predictions = trained_model(X_tensor).numpy().flatten()
@@ -72,31 +67,19 @@ def backtest_model(
             sell_price = price
             cash = (shares * sell_price) - transaction_fee
             shares = 0
-            price_change = (
-                ((sell_price - last_buy_price) / last_buy_price) * 100
-                if last_buy_price
-                else None
-            )
-            portfolio_gain = (
-                (cash - BACKTEST_PARAMS["initial_balance"])
-                / BACKTEST_PARAMS["initial_balance"]
-            ) * 100
+            price_change = ((sell_price - last_buy_price) / last_buy_price) * 100 if last_buy_price else None
+            portfolio_gain = ((cash - BACKTEST_PARAMS["initial_balance"]) / BACKTEST_PARAMS["initial_balance"]) * 100
 
             # Track the maximum loss per trade
             if price_change and price_change < 0:
                 max_loss_per_trade = min(max_loss_per_trade, price_change)
 
-            trade_log.append(
-                [trade_date, "SELL", sell_price, cash, price_change, portfolio_gain]
-            )
+            trade_log.append([trade_date, "SELL", sell_price, cash, price_change, portfolio_gain])
 
         peak_value = max(peak_value, cash + (shares * df.iloc[i]["Close"]))
 
     total_value = cash + (shares * df.iloc[-1]["Close"])
-    net_profit = (
-        (total_value - BACKTEST_PARAMS["initial_balance"])
-        / BACKTEST_PARAMS["initial_balance"]
-    ) * 100
+    net_profit = ((total_value - BACKTEST_PARAMS["initial_balance"]) / BACKTEST_PARAMS["initial_balance"]) * 100
 
     # Calculate the ticker's percentage change
     ticker_change = ((df["Close"].iloc[-1] - df["Close"].iloc[0]) / df["Close"].iloc[0]) * 100

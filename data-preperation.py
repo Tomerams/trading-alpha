@@ -57,9 +57,7 @@ end_year = 2024
 nasdaq100_by_year = get_nasdaq100_tickers_by_year(start_year, end_year)
 
 # ✅ Flatten all tickers to a unique list
-all_tickers = list(
-    set(ticker for tickers in nasdaq100_by_year.values() for ticker in tickers)
-)
+all_tickers = list(set(ticker for tickers in nasdaq100_by_year.values() for ticker in tickers))
 
 # ✅ Download data for all tickers
 for ticker in all_tickers:

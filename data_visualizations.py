@@ -4,9 +4,7 @@ import matplotlib.pyplot as plt
 
 # ✅ **Step 1: Load trade history**
 trade_df = pd.read_csv("data/backtest_results.csv")
-trade_df["Date"] = pd.to_datetime(
-    trade_df["Date"]
-).dt.date  # Convert to YYYY-MM-DD format
+trade_df["Date"] = pd.to_datetime(trade_df["Date"]).dt.date  # Convert to YYYY-MM-DD format
 
 # ✅ **Step 2: Fetch stock price data from Yahoo Finance**
 ticker = "FNGU"
@@ -20,14 +18,10 @@ stock_data = yf.download(ticker, start=start_date, end=end_date, interval="1d")
 
 # ✅ **Fix Multi-Level Index Issue in stock_data**
 if isinstance(stock_data.columns, pd.MultiIndex):
-    stock_data.columns = stock_data.columns.get_level_values(
-        0
-    )  # Flatten multi-index columns
+    stock_data.columns = stock_data.columns.get_level_values(0)  # Flatten multi-index columns
 
 stock_data.reset_index(inplace=True)  # Reset index to make "Date" a column
-stock_data["Date"] = pd.to_datetime(
-    stock_data["Date"]
-).dt.date  # Convert Date to YYYY-MM-DD format
+stock_data["Date"] = pd.to_datetime(stock_data["Date"]).dt.date  # Convert Date to YYYY-MM-DD format
 
 # ✅ **Step 3: Check Data Formatting Before Merge**
 print("📊 First 5 Dates in stock_data:\n", stock_data[["Date", "Close"]].head())

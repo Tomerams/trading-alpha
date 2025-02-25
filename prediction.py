@@ -6,9 +6,7 @@ from data_processing import get_data
 
 def predict_model(ticker, start_date):
     # Load the model
-    model = AttentionModel(
-        input_size=len(FEATURE_COLUMNS), hidden_size=64, output_size=1
-    )
+    model = AttentionModel(input_size=len(FEATURE_COLUMNS), hidden_size=64, output_size=1)
     model.load_state_dict(torch.load(f"models/trained_model-{ticker}.pkl"))
     model.eval()
 
