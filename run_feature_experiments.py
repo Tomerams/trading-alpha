@@ -3,7 +3,7 @@ import multiprocessing
 import logging
 import pandas as pd
 from config import FEATURE_COLUMNS
-from utilities import get_data
+from data_processing import get_data
 from model_training import train_and_evaluate
 
 logging.basicConfig(

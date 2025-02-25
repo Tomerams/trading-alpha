@@ -1,8 +1,7 @@
 import torch
-import numpy as np
 from model_training import AttentionModel
 from config import FEATURE_COLUMNS
-from utilities import get_data  # Ensure your features are fetched properly
+from data_processing import get_data
 
 
 def predict_model(ticker, start_date):

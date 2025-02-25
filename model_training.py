@@ -8,7 +8,8 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from config import FEATURE_COLUMNS
-from utilities import get_data, get_model
+from utilities import get_model
+from data_processing import get_data
 from model_backtest import backtest_model
 
 logging.basicConfig(
@@ -37,8 +38,6 @@ def train_and_evaluate(
     X = historical_data[existing_features].values
     y = historical_data["target"].values
 
-    print(X)
-
     scaler = StandardScaler()
     X = scaler.fit_transform(X)
 
@@ -58,30 +57,41 @@ def train_and_evaluate(
 
     logging.info("🚀 Training a new model (ignoring existing models)")
     model = get_model(input_size=len(existing_features), model_type=model_type)
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    loss_function = nn.MSELoss()
+    if hasattr(model, "parameters"):  # ✅ PyTorch model
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
+        loss_function = nn.MSELoss()
+        use_pytorch = True
+    else:
+        model.compile(optimizer="adam", loss="mse")
+        use_pytorch = False
 
-    for epoch in range(20):
-        total_loss = 0
-        for batch_X, batch_y in train_loader:
-            optimizer.zero_grad()
-            predictions = model(batch_X)
-            loss = loss_function(predictions, batch_y)
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item()
-        logging.info(f"Epoch {epoch+1}/20 - Loss: {total_loss:.4f}")
+    if use_pytorch:
+        for epoch in range(20):
+            total_loss = 0
+            for batch_X, batch_y in train_loader:
+                optimizer.zero_grad()
+                predictions = model(batch_X)
+                loss = loss_function(predictions, batch_y)
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+            logging.info(f"Epoch {epoch+1}/20 - Loss: {total_loss:.4f}")
+    else:
+        model.fit(X_train.numpy(), y_train.numpy(), epochs=20, batch_size=32)
 
     if save_model:
         os.makedirs("models", exist_ok=True)  # Ensure directory exists
-        torch.save(
-            {"model_state_dict": model.state_dict()},  # ✅ Correct format
-            f"models/trained_model-{stock_ticker}-{model_type}.pkl",
-        )
+
+        if use_pytorch:
+            torch.save(
+                {"model_state_dict": model.state_dict()},
+                f"models/trained_model-{stock_ticker}-{model_type}.pkl",
+            )
+        else:
+            model.save(f"models/trained_model-{stock_ticker}-{model_type}.h5")  # ✅ Correct for Keras models
+
         joblib.dump(scaler, f"models/scaler-{stock_ticker}-{model_type}.pkl")
-        joblib.dump(
-            selected_features, f"models/features-{stock_ticker}-{model_type}.pkl"
-        )
+        joblib.dump(selected_features, f"models/features-{stock_ticker}-{model_type}.pkl")
 
         print(f"✅ Model and scaler saved for {stock_ticker} ({model_type})")
 
@@ -99,10 +109,10 @@ def train_and_evaluate(
 
 
 if __name__ == "__main__":
-    stock_ticker = "FNGU"
-    start_date = "2019-01-01"
+    stock_ticker = "TQQQ"
+    start_date = "2012-01-01"
     end_date = "2023-01-01"
-    model_type = "TCN"
+    model_type = "TransformerRNN"
 
     print(
         f"🎯 Training {model_type} model for {stock_ticker} from {start_date} to {end_date}..."

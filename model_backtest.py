@@ -1,46 +1,13 @@
 import torch
-import joblib
-import os
 import pandas as pd
 import logging
-from utilities import get_data, get_model
+from data_processing import get_data
 from config import BACKTEST_PARAMS
+from utilities import load_model
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
-
-
-def load_model(ticker, model_type):
-    model_filename = f"models/trained_model-{ticker}-{model_type}.pkl"
-    scaler_filename = f"models/scaler-{ticker}-{model_type}.pkl"
-    features_filename = f"models/features-{ticker}-{model_type}.pkl"
-
-    if (
-        not os.path.exists(model_filename)
-        or not os.path.exists(scaler_filename)
-        or not os.path.exists(features_filename)
-    ):
-        raise FileNotFoundError(
-            f"❌ Model files for {ticker}-{model_type} not found! Train the model first."
-        )
-
-    checkpoint = torch.load(model_filename, map_location=torch.device("cpu"))
-
-    if "model_state_dict" not in checkpoint:
-        raise KeyError(
-            f"❌ Invalid model file: {model_filename}. The key 'model_state_dict' is missing!"
-        )
-
-    features = joblib.load(features_filename)
-    scaler = joblib.load(scaler_filename)
-
-    model = get_model(input_size=len(features), model_type=model_type)
-    model.load_state_dict(checkpoint["model_state_dict"])
-    model.eval()
-
-    return model, scaler, features
-
 
 def backtest_model(
     stock_ticker, start_date, end_date, trained_model, data_scaler, selected_features
@@ -66,11 +33,11 @@ def backtest_model(
     df["Predicted_Return"] = predictions
     df["Predicted_Close"] = df["Close"] * (1 + df["Predicted_Return"])
 
-    # Trading simulation parameters
     cash = BACKTEST_PARAMS["initial_balance"]
     shares = 0
     last_buy_price = None
     peak_value = cash
+    max_loss_per_trade = 0  # Track maximum loss per trade
 
     for i in range(len(df) - 1):
         trade_date = df.index[i]
@@ -114,6 +81,11 @@ def backtest_model(
                 (cash - BACKTEST_PARAMS["initial_balance"])
                 / BACKTEST_PARAMS["initial_balance"]
             ) * 100
+
+            # Track the maximum loss per trade
+            if price_change and price_change < 0:
+                max_loss_per_trade = min(max_loss_per_trade, price_change)
+
             trade_log.append(
                 [trade_date, "SELL", sell_price, cash, price_change, portfolio_gain]
             )
@@ -125,6 +97,9 @@ def backtest_model(
         (total_value - BACKTEST_PARAMS["initial_balance"])
         / BACKTEST_PARAMS["initial_balance"]
     ) * 100
+
+    # Calculate the ticker's percentage change
+    ticker_change = ((df["Close"].iloc[-1] - df["Close"].iloc[0]) / df["Close"].iloc[0]) * 100
 
     trade_df = pd.DataFrame(
         trade_log,
@@ -140,24 +115,23 @@ def backtest_model(
     trade_df["Date"] = pd.to_datetime(trade_df["Date"])
     trade_df.to_csv("data/backtest_results.csv", index=False)
 
-    return net_profit, trade_df
+    print(f"📉 Ticker Change: {ticker_change:.2f}%")
+    print(f"📈 Portfolio Change: {net_profit:.2f}%")
+    print(f"⚠️ Maximum Loss per Trade: {max_loss_per_trade:.2f}%")
+
+    return net_profit, trade_df, ticker_change, max_loss_per_trade
 
 
 if __name__ == "__main__":
-    ticker = "FNGU"
-    start_date = "2024-01-01"
-    end_date = "2025-02-02"
-
-    print("🚀 Running Feature Experiments...")
-
-    model_type = "Transformer"
+    ticker = "TQQQ"
+    start_date = "2023-01-01"
+    end_date = "2025-01-01"
+    model_type = "TransformerRNN"
     trained_model, data_scaler, best_features = load_model(ticker, model_type)
 
     print("🚀 Running Backtest Using Trained Model...")
-    net_profit, trade_df = backtest_model(
+    net_profit, trade_df, ticker_change, max_loss_per_trade = backtest_model(
         ticker, start_date, end_date, trained_model, data_scaler, best_features
     )
 
-    print(f"✅ Net Profit from Trading Strategy: {net_profit:.2f}%")
-    print(f"📊 Trade history saved to 'backtest_results.csv'!")
     print(trade_df.head())

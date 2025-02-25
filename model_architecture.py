@@ -4,10 +4,11 @@ from tcn import TCN
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import GRU, Dense, Dropout, Input, InputLayer
 
-class AttentionModel(nn.Module):
+
+class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
-        super(AttentionModel, self).__init__()
-        self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
+        super(LSTMModel, self).__init__()
+        self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True, dropout=0.2)
         self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
@@ -36,6 +37,26 @@ class TransformerModel(nn.Module):
         x = self.encoder(x)
         x = self.transformer(x)
         return self.fc(x[:, -1, :])  # ✅ Select the last timestep correctly
+
+
+class TransformerRNNModel(nn.Module):
+    def __init__(self, input_size, hidden_size=64, num_layers=1, num_heads=4, dropout=0.2):
+        super(TransformerRNNModel, self).__init__()
+        self.embedding = nn.Linear(input_size, hidden_size)
+        encoder_layers = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=num_heads, dropout=dropout)
+        self.transformer = nn.TransformerEncoder(encoder_layers, num_layers=num_layers)
+        self.lstm = nn.LSTM(hidden_size, hidden_size, num_layers, batch_first=True, dropout=dropout)
+        self.fc = nn.Linear(hidden_size, 1)
+
+    def forward(self, x):
+        if x.dim() == 2:
+            x = x.unsqueeze(1)
+        x = self.embedding(x)
+        x = x.permute(1, 0, 2)
+        transformer_out = self.transformer(x)
+        transformer_out = transformer_out.permute(1, 0, 2)
+        lstm_out, _ = self.lstm(transformer_out)
+        return self.fc(lstm_out[:, -1, :])
 
 
 class CNNLSTMModel(nn.Module):
@@ -85,7 +106,6 @@ class TCNModel:
 
     def predict(self, X):
         return self.model.predict(X)
-
 
 
 class GRUModel:
