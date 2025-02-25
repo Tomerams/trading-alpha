@@ -37,6 +37,12 @@ class Indicator(Enum):
     WILLIAMS_R = "Williams_%R"
     TRIX = "TRIX"
     TSI = "TSI"
+    RSI_CROSS_50 = "RSI_cross_50"
+    VOLATILITY_BREAKOUT = "Volatility_Breakout"
+    SHORT_MOMENTUM = "Short_Momentum"
+    TREND_5D = "Trend_5D"
+    TREND_10D = "Trend_10D"
+    VOLUME_TRAND = "Volume_Trend"
 
 
 class Pattern(Enum):

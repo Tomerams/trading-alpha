@@ -31,8 +31,10 @@ def get_data(stock_ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     df = calculate_indicators(df)
-    forecast_period = 7
-    df["target"] = (df["Close"].shift(-forecast_period) - df["Close"]) / df["Close"]
+
+    df["Target_Tomorrow"] = df["Close"].shift(-1).bfill()
+    df["Target_3_Days"] = df["Close"].shift(-3).bfill()
+    df["Target_Next_Week"] = df["Close"].shift(-5).bfill()
 
     df.dropna(inplace=True)
 
@@ -146,8 +148,12 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df[Indicator.RSI_2.value] = ta.momentum.rsi(df["Close"], window=2)
     df[Indicator.RSI_ABOVE_70.value] = (df[Indicator.RSI.value] > 70).astype(int)
     df[Indicator.RSI_BELOW_30.value] = (df[Indicator.RSI.value] < 30).astype(int)
-    df[Indicator.RSI_CROSS_DOWN_70.value] = np.where((df[Indicator.RSI.value].shift(1) > 70) & (df[Indicator.RSI.value] <= 70), 1, 0)
-    df[Indicator.RSI_CROSS_UP_30.value] = np.where((df[Indicator.RSI.value].shift(1) < 30) & (df[Indicator.RSI.value] >= 30), 1, 0)
+    df[Indicator.RSI_CROSS_DOWN_70.value] = np.where(
+        (df[Indicator.RSI.value].shift(1) > 70) & (df[Indicator.RSI.value] <= 70), 1, 0
+    )
+    df[Indicator.RSI_CROSS_UP_30.value] = np.where(
+        (df[Indicator.RSI.value].shift(1) < 30) & (df[Indicator.RSI.value] >= 30), 1, 0
+    )
     df[Indicator.SMA_50.value] = df["Close"].rolling(window=50).mean()
     df[Indicator.EMA_50.value] = df["Close"].ewm(span=50, adjust=False).mean()
     df[Indicator.RSI_2_ABOVE_90.value] = (df[Indicator.RSI_2.value] > 90).astype(int)
@@ -200,6 +206,15 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df[Pattern.TRIPLE_BOTTOM.value] = df["Close"].rolling(50).apply(detect_triple_bottom, raw=True)
     df[Pattern.BULLISH_ENGULFING.value] = df.apply(lambda row: detect_bullish_engulfing(df, row.name), axis=1)
     df[Pattern.BEARISH_ENGULFING.value] = df.apply(lambda row: detect_bearish_engulfing(df, row.name), axis=1)
+    df[Indicator.SHORT_MOMENTUM.value] = df["Close"].pct_change(3)
+    df[Indicator.VOLATILITY_BREAKOUT.value] = (df["Close"] > df[Indicator.BOLLINGER_UPPER.value]).astype(int)
+    df[Indicator.RSI_CROSS_50.value] = np.where(
+        (df[Indicator.RSI.value].shift(1) < 50) & (df[Indicator.RSI.value] >= 50), 1, 0
+    )
+    df[Indicator.TREND_5D.value] = df["Close"].pct_change(5)
+    df[Indicator.TREND_10D.value] = df["Close"].pct_change(10)
+    df[Indicator.VOLUME_TRAND.value] = df["Volume"].pct_change(5)
+
     return df
 
 

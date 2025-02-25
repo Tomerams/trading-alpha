@@ -13,7 +13,7 @@ from model_architecture import (
 
 def get_model(input_size: int, model_type: str):
     """Initialize and return the selected trading model with fixed input shape."""
-    hidden_size = 64
+    hidden_size = 128
     output_size = 1
 
     model_map = {
