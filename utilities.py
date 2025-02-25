@@ -1,6 +1,7 @@
 import os
 import joblib
 import torch
+from config import MODEL_PARAMS
 from model_architecture import (
     LSTMModel,
     CNNLSTMModel,
@@ -13,8 +14,8 @@ from model_architecture import (
 
 def get_model(input_size: int, model_type: str):
     """Initialize and return the selected trading model with fixed input shape."""
-    hidden_size = 128
-    output_size = 1
+    hidden_size = MODEL_PARAMS["hidden_size"]
+    output_size = MODEL_PARAMS["output_size"]
 
     model_map = {
         "LSTM": LSTMModel(input_size, hidden_size, output_size),

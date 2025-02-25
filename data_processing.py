@@ -32,9 +32,12 @@ def get_data(stock_ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
 
     df = calculate_indicators(df)
 
-    df["Target_Tomorrow"] = df["Close"].shift(-1).bfill()
-    df["Target_3_Days"] = df["Close"].shift(-3).bfill()
-    df["Target_Next_Week"] = df["Close"].shift(-5).bfill()
+    df["Target_Tomorrow"] = (df["Close"].shift(-1) - df["Close"]) / df["Close"]
+    df["Target_3_Days"] = (df["Close"].shift(-3) - df["Close"]) / df["Close"]
+    df["Target_Next_Week"] = (df["Close"].shift(-5) - df["Close"]) / df["Close"]
+    
+    feature_cols = [col for col in df.columns if col not in ["Target_Tomorrow", "Target_3_Days", "Target_Next_Week"]]
+    df[feature_cols] = (df[feature_cols] - df[feature_cols].mean()) / df[feature_cols].std()
 
     df.dropna(inplace=True)
 
@@ -214,6 +217,11 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df[Indicator.TREND_5D.value] = df["Close"].pct_change(5)
     df[Indicator.TREND_10D.value] = df["Close"].pct_change(10)
     df[Indicator.VOLUME_TRAND.value] = df["Volume"].pct_change(5)
+    df[Indicator.RSI_DELTA.value] = df[Indicator.RSI.value].diff()
+    df[Indicator.MACD_DELTA.value] = df[Indicator.MACD.value].diff()
+    df[Indicator.BOLLINGER_WIDTH.value] = df[Indicator.BOLLINGER_UPPER.value] - df[Indicator.BOLLINGER_LOWER.value]
+    df[Indicator.MOMENTUM_CHANGE.value] = df[Indicator.MOMENTUM.value].diff()
+    df[Indicator.VOLATILITY_CHANGE.value] = df[Indicator.VOLATILITY.value].diff()
 
     return df
 

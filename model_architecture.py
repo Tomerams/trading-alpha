@@ -38,21 +38,32 @@ class TransformerModel(nn.Module):
 class TransformerRNNModel(nn.Module):
     def __init__(self, input_size, hidden_size=64, num_layers=1, num_heads=4, output_size=3, dropout=0.1):
         super(TransformerRNNModel, self).__init__()
+        
         self.embedding = nn.Linear(input_size, hidden_size)
+        self.self_attention = nn.MultiheadAttention(embed_dim=hidden_size, num_heads=num_heads, batch_first=True)
+        
         encoder_layers = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=num_heads, dropout=dropout)
         self.transformer = nn.TransformerEncoder(encoder_layers, num_layers=num_layers)
+        
         self.lstm = nn.LSTM(hidden_size, hidden_size, num_layers, batch_first=True, dropout=dropout)
-        self.fc = nn.Linear(hidden_size, output_size) 
-
+        self.fc = nn.Linear(hidden_size, output_size)  # Predicting relative price changes
+        
     def forward(self, x):
         if x.dim() == 2:
             x = x.unsqueeze(1)
+        
         x = self.embedding(x)
+        attn_output, _ = self.self_attention(x, x, x)
+        x = x + attn_output  # Residual connection
         x = x.permute(1, 0, 2)
-        x = self.transformer(x)
-        x = x.permute(1, 0, 2)
-        lstm_out, _ = self.lstm(x)
-        return self.fc(lstm_out[:, -1, :])
+        
+        transformer_out = self.transformer(x)
+        transformer_out = transformer_out.permute(1, 0, 2)
+        
+        lstm_out, _ = self.lstm(transformer_out)
+        out = self.fc(lstm_out[:, -1, :])
+        
+        return out
 
 
 class CNNLSTMModel(nn.Module):

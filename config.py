@@ -43,7 +43,11 @@ class Indicator(Enum):
     TREND_5D = "Trend_5D"
     TREND_10D = "Trend_10D"
     VOLUME_TRAND = "Volume_Trend"
-
+    RSI_DELTA = "RSI_Delta"
+    MACD_DELTA = "MACD_Delta"
+    BOLLINGER_WIDTH = "Bollinger_Width"
+    MOMENTUM_CHANGE = "Momentum_Change"
+    VOLATILITY_CHANGE = "Volatility_Change"
 
 class Pattern(Enum):
     DOUBLE_TOP = "double_top"
@@ -58,10 +62,10 @@ class Pattern(Enum):
 FEATURE_COLUMNS = [*[indicator.value for indicator in Indicator], *[pattern.value for pattern in Pattern]]
 
 MODEL_PARAMS = {
-    "hidden_size": 32,
+    "hidden_size": 128,
     "output_size": 1,
     "learning_rate": 0.001,
-    "epochs": 100,
+    "epochs": 60,
 }
 
 BACKTEST_PARAMS = {
