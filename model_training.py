@@ -86,8 +86,8 @@ def train_and_evaluate(
     }
 
 if __name__ == "__main__":
-    stock_ticker = "TQQQ"
-    start_date = "2012-01-01"
+    stock_ticker = "FNGU"
+    start_date = "2018-05-05"
     end_date = "2023-01-01"
     model_type = "TransformerRNN"
 
