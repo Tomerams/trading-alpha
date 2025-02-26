@@ -27,7 +27,7 @@ def train_and_evaluate(
     historical_data = get_data(stock_ticker, start_date, end_date).dropna()
     data = historical_data[selected_features + ["Target_Tomorrow", "Target_3_Days", "Target_Next_Week"]].dropna()
     X = data[selected_features].values
-    y = data[["Target_Tomorrow", "Target_3_Days", "Target_Next_Week"]].values  # Multi-target
+    y = data[["Target_Tomorrow", "Target_3_Days", "Target_Next_Week"]].values
 
     scaler = StandardScaler()
     X = scaler.fit_transform(X)
@@ -38,7 +38,7 @@ def train_and_evaluate(
 
     train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=32, shuffle=True)
 
-    logging.info("🚀 Training a new model (ignoring existing models)")
+    logging.info("🚀 Training a new model")
     model = get_model(input_size=len(selected_features), model_type=model_type, output_size=3)
     if hasattr(model, "parameters"):
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)

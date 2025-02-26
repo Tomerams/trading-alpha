@@ -48,6 +48,7 @@ class Indicator(Enum):
     BOLLINGER_WIDTH = "Bollinger_Width"
     MOMENTUM_CHANGE = "Momentum_Change"
     VOLATILITY_CHANGE = "Volatility_Change"
+    VOLUME = "Volume"
 
 class Pattern(Enum):
     DOUBLE_TOP = "double_top"

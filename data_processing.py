@@ -25,21 +25,29 @@ def get_data(stock_ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
             f"'Close' column is missing in the dataset for {stock_ticker}. Available columns: {df.columns.tolist()}"
         )
 
-    df.dropna(subset=["Close"], inplace=True)
 
     for col in df.columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
-
     df = calculate_indicators(df)
 
     df["Target_Tomorrow"] = (df["Close"].shift(-1) - df["Close"]) / df["Close"]
     df["Target_3_Days"] = (df["Close"].shift(-3) - df["Close"]) / df["Close"]
     df["Target_Next_Week"] = (df["Close"].shift(-5) - df["Close"]) / df["Close"]
     
-    feature_cols = [col for col in df.columns if col not in ["Target_Tomorrow", "Target_3_Days", "Target_Next_Week"]]
-    df[feature_cols] = (df[feature_cols] - df[feature_cols].mean()) / df[feature_cols].std()
+    feature_cols = [
+        Indicator.VOLUME.value,
+        Indicator.RSI.value,
+        Indicator.ATR.value,
+        Indicator.MOMENTUM.value,
+        Indicator.MOMENTUM_CHANGE.value,
+        Indicator.VOLATILITY.value,
+        Indicator.VOLATILITY_CHANGE.value
+    ]
+
+    df[feature_cols] = df[feature_cols].apply(lambda x: (x - x.mean()) / (x.std() + 1e-8))  # Standardize only selected features
 
     df.dropna(inplace=True)
+
 
     df.to_csv(f"data/{stock_ticker}_indicators_data.csv")
 

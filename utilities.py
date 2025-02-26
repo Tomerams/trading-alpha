@@ -12,7 +12,7 @@ from model_architecture import (
 )
 
 
-def get_model(input_size: int, model_type: str):
+def get_model(input_size, model_type, output_size=1):
     """Initialize and return the selected trading model with fixed input shape."""
     hidden_size = MODEL_PARAMS["hidden_size"]
     output_size = MODEL_PARAMS["output_size"]
