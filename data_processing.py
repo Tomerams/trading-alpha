@@ -24,6 +24,9 @@ def get_data(stock_ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
         raise KeyError(
             f"'Close' column is missing in the dataset for {stock_ticker}. Available columns: {df.columns.tolist()}"
         )
+    
+    df.reset_index(inplace=True)
+    df.rename(columns={"index": "Date"}, inplace=True)
 
 
     for col in df.columns:

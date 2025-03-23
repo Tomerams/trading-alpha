@@ -3,7 +3,7 @@ import torch
 import pandas as pd
 import logging
 from data_processing import get_data
-from config import BACKTEST_PARAMS, Indicator
+from config import BACKTEST_PARAMS
 from utilities import load_model
 from sklearn.metrics import precision_score, recall_score, mean_absolute_error
 
@@ -14,24 +14,23 @@ def backtest_model(stock_ticker, start_date, end_date, trained_model, data_scale
     
     df = get_data(stock_ticker, start_date, end_date)
 
-    # 🔍 DEBUG: Check if data is loaded
     if df is None or df.empty:
         raise ValueError("⚠️ No data available after applying the date range. Check `get_data()` output.")
 
     logging.info(f"✅ Data loaded with shape: {df.shape}")
 
-    # Ensure selected features exist
-    missing_features = [col for col in selected_features + ["Close"] if col not in df.columns]
-    if missing_features:
-        raise ValueError(f"⚠️ Missing features in dataset: {missing_features}")
-
-    df = df[selected_features + ["Close"]].copy()
     df.index = pd.to_datetime(df.index)
 
+    # Ensure 'Close' is a Series, not a DataFrame
+    df["Close"] = df["Close"].iloc[:, 0] if isinstance(df["Close"], pd.DataFrame) else df["Close"]
 
-    df["Target_Tomorrow"] = df["Close"].shift(-1)
-    df["Target_3_Days"] = df["Close"].shift(-3)
-    df["Target_Next_Week"] = df["Close"].shift(-5)
+
+    # Create targets
+    df["Target_Tomorrow"] = df["Close"].shift(-1).astype(float)
+    df["Target_3_Days"] = df["Close"].shift(-3).astype(float)
+    df["Target_Next_Week"] = df["Close"].shift(-5).astype(float)
+
+
 
     df.dropna(inplace=True)
 
@@ -44,9 +43,9 @@ def backtest_model(stock_ticker, start_date, end_date, trained_model, data_scale
     with torch.no_grad():
         predictions = trained_model(X_tensor).numpy()
 
-    df["Predicted_Tomorrow"] = df["Close"] + (predictions[:, 0] * df["Close"].std())
-    df["Predicted_3_Days"] = df["Close"] + (predictions[:, 1] * df["Close"].std())
-    df["Predicted_Next_Week"] = df["Close"] + (predictions[:, 2] * df["Close"].std())
+    df["Predicted_Tomorrow"] = df["Close"] * (predictions[:, 0] + 1)
+    df["Predicted_3_Days"] = df["Close"] * (predictions[:, 1] + 1)
+    df["Predicted_Next_Week"] = df["Close"] * (predictions[:, 2] + 1)
 
     df["Predicted_Direction_Tomorrow"] = (df["Predicted_Tomorrow"] > df["Close"]).astype(int)
     df["Predicted_Direction_3_Days"] = (df["Predicted_3_Days"] > df["Close"]).astype(int)
@@ -56,15 +55,12 @@ def backtest_model(stock_ticker, start_date, end_date, trained_model, data_scale
     df["Actual_Direction_3_Days"] = (df["Target_3_Days"] > df["Close"]).astype(int)
     df["Actual_Direction_Next_Week"] = (df["Target_Next_Week"] > df["Close"]).astype(int)
 
-    df.to_csv("data/backtest_df.csv")
-
     cash = BACKTEST_PARAMS["initial_balance"]
     shares = 0
     last_buy_price = None
     peak_value = cash
     max_loss_per_trade = 0
 
-    # Dynamic thresholds based on volatility
     buying_threshold = 0.005
     selling_threshold = -0.01
 
@@ -105,8 +101,6 @@ def backtest_model(stock_ticker, start_date, end_date, trained_model, data_scale
     total_value = cash + (shares * stock_price)
     net_profit = ((total_value - BACKTEST_PARAMS["initial_balance"]) / BACKTEST_PARAMS["initial_balance"]) * 100
 
-    print(df["Close"].iloc[0])
-    print(df["Close"].iloc[-1])
     ticker_change = ((df["Close"].iloc[-1] - df["Close"].iloc[0]) / df["Close"].iloc[0]) * 100
 
     # Compute Precision and Recall for Multiple Horizons
@@ -145,7 +139,7 @@ def backtest_model(stock_ticker, start_date, end_date, trained_model, data_scale
 
 if __name__ == "__main__":
     ticker = "TQQQ"
-    start_date = "2020-01-01"
+    start_date = "2017-05-05"
     end_date = "2025-01-01"
     model_type = "TransformerRNN"
     trained_model, data_scaler, best_features = load_model(ticker, model_type)
