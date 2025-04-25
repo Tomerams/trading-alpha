@@ -40,7 +40,7 @@ def get_model(input_size, model_type, output_size=1):
 
 
 def load_model(ticker, model_type):
-    model_filename = f"models/trained_model-{ticker}-{model_type}.pt"  
+    model_filename = f"models/trained_model-{ticker}-{model_type}.pt"
     scaler_filename = f"models/scaler-{ticker}-{model_type}.pkl"
     features_filename = f"models/features-{ticker}-{model_type}.pkl"
 
@@ -49,12 +49,16 @@ def load_model(ticker, model_type):
         or not os.path.exists(scaler_filename)
         or not os.path.exists(features_filename)
     ):
-        raise FileNotFoundError(f"❌ Model files for {ticker}-{model_type} not found! Train the model first.")
+        raise FileNotFoundError(
+            f"❌ Model files for {ticker}-{model_type} not found! Train the model first."
+        )
 
     checkpoint = torch.load(model_filename, map_location=torch.device("cpu"))
 
     if "model_state_dict" not in checkpoint:
-        raise KeyError(f"❌ Invalid model file: {model_filename}. The key 'model_state_dict' is missing!")
+        raise KeyError(
+            f"❌ Invalid model file: {model_filename}. The key 'model_state_dict' is missing!"
+        )
 
     features = joblib.load(features_filename)
     scaler = joblib.load(scaler_filename)
@@ -67,18 +71,19 @@ def load_model(ticker, model_type):
 
 
 def time_based_split(df: pd.DataFrame):
-
-    df['Date'] = pd.to_datetime(df['Date'])
-    df = df.sort_values(by='Date')
+    df["Date"] = pd.to_datetime(df["Date"])
+    df = df.sort_values(by="Date")
 
     total_rows = len(df)
     train_size = int(total_rows * 0.7)
     test_size = int(total_rows * 0.15)
-    
+
     train_df = df.iloc[:train_size]
-    test_df = df.iloc[train_size:train_size + test_size]
-    backtest_df = df.iloc[train_size + test_size:]
-    
-    print(f"Train size: {len(train_df)}, Test size: {len(test_df)}, Backtest size: {len(backtest_df)}")
-    
+    test_df = df.iloc[train_size : train_size + test_size]
+    backtest_df = df.iloc[train_size + test_size :]
+
+    print(
+        f"Train size: {len(train_df)}, Test size: {len(test_df)}, Backtest size: {len(backtest_df)}"
+    )
+
     return train_df, test_df, backtest_df

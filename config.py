@@ -1,5 +1,12 @@
 from enum import Enum
 
+USE_GANN_FEATURES = False
+
+GANN_FEATURES = {
+    "angles": {"use": True, "windows": [0.5, 1, 2]},
+    "cycles": {"use": True, "up_days": 5, "down_days": 3},
+}
+
 
 class Indicator(Enum):
     RSI = "RSI"
@@ -50,6 +57,7 @@ class Indicator(Enum):
     VOLATILITY_CHANGE = "Volatility_Change"
     VOLUME = "Volume"
 
+
 class Pattern(Enum):
     DOUBLE_TOP = "double_top"
     HEAD_SHOULDERS = "head_and_shoulders"
@@ -60,7 +68,10 @@ class Pattern(Enum):
     BEARISH_ENGULFING = "bearish_engulfing"
 
 
-FEATURE_COLUMNS = [*[indicator.value for indicator in Indicator], *[pattern.value for pattern in Pattern]]
+FEATURE_COLUMNS = [
+    *[indicator.value for indicator in Indicator],
+    *[pattern.value for pattern in Pattern],
+]
 
 MODEL_PARAMS = {
     "hidden_size": 128,

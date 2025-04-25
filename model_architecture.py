@@ -4,6 +4,7 @@ from tcn import TCN
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import GRU, Dense, Dropout, Input, InputLayer
 
+
 class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size, output_size=3):
         super(LSTMModel, self).__init__()
@@ -22,10 +23,12 @@ class TransformerModel(nn.Module):
         super(TransformerModel, self).__init__()
         self.encoder = nn.Linear(input_size, hidden_size)
         self.transformer = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(d_model=hidden_size, nhead=nhead, batch_first=True),
+            nn.TransformerEncoderLayer(
+                d_model=hidden_size, nhead=nhead, batch_first=True
+            ),
             num_layers=num_layers,
         )
-        self.fc = nn.Linear(hidden_size, output_size) 
+        self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
         if x.dim() == 2:
@@ -36,43 +39,63 @@ class TransformerModel(nn.Module):
 
 
 class TransformerRNNModel(nn.Module):
-    def __init__(self, input_size, hidden_size=64, num_layers=1, num_heads=4, output_size=3, dropout=0.1):
+    def __init__(
+        self,
+        input_size,
+        hidden_size=64,
+        num_layers=1,
+        num_heads=4,
+        output_size=3,
+        dropout=0.1,
+    ):
         super(TransformerRNNModel, self).__init__()
-        
+
         self.embedding = nn.Linear(input_size, hidden_size)
-        self.self_attention = nn.MultiheadAttention(embed_dim=hidden_size, num_heads=num_heads, batch_first=True)
-        
-        encoder_layers = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=num_heads, dropout=dropout)
+        self.self_attention = nn.MultiheadAttention(
+            embed_dim=hidden_size, num_heads=num_heads, batch_first=True
+        )
+
+        encoder_layers = nn.TransformerEncoderLayer(
+            d_model=hidden_size, nhead=num_heads, dropout=dropout
+        )
         self.transformer = nn.TransformerEncoder(encoder_layers, num_layers=num_layers)
-        
-        self.lstm = nn.LSTM(hidden_size, hidden_size, num_layers, batch_first=True, dropout=dropout)
-        self.fc = nn.Linear(hidden_size, output_size)  # Predicting relative price changes
-        
+
+        self.lstm = nn.LSTM(
+            hidden_size, hidden_size, num_layers, batch_first=True, dropout=dropout
+        )
+        self.fc = nn.Linear(
+            hidden_size, output_size
+        )  # Predicting relative price changes
+
     def forward(self, x):
         if x.dim() == 2:
             x = x.unsqueeze(1)
-        
+
         x = self.embedding(x)
         attn_output, _ = self.self_attention(x, x, x)
         x = x + attn_output  # Residual connection
         x = x.permute(1, 0, 2)
-        
+
         transformer_out = self.transformer(x)
         transformer_out = transformer_out.permute(1, 0, 2)
-        
+
         lstm_out, _ = self.lstm(transformer_out)
         out = self.fc(lstm_out[:, -1, :])
-        
+
         return out
 
 
 class CNNLSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size, output_size=3):
         super(CNNLSTMModel, self).__init__()
-        self.conv1 = nn.Conv1d(in_channels=input_size, out_channels=16, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv1d(in_channels=16, out_channels=32, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv1d(
+            in_channels=input_size, out_channels=16, kernel_size=3, padding=1
+        )
+        self.conv2 = nn.Conv1d(
+            in_channels=16, out_channels=32, kernel_size=3, padding=1
+        )
         self.lstm = nn.LSTM(input_size=32, hidden_size=hidden_size, batch_first=True)
-        self.fc = nn.Linear(hidden_size, output_size) 
+        self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
         if x.dim() == 2:

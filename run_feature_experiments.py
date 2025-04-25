@@ -6,11 +6,15 @@ from config import FEATURE_COLUMNS
 from data_processing import get_data
 from model_training import train_and_evaluate
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 def evaluate_features(stock_ticker, start_date, end_date, model_type, features):
-    return train_and_evaluate(stock_ticker, start_date, end_date, model_type, features, save_model=False)
+    return train_and_evaluate(
+        stock_ticker, start_date, end_date, model_type, features, save_model=False
+    )
 
 
 def run_feature_experiments(stock_ticker, start_date, end_date, model_type):
@@ -25,7 +29,10 @@ def run_feature_experiments(stock_ticker, start_date, end_date, model_type):
     with multiprocessing.Pool(processes=4) as pool:
         results = pool.starmap(
             evaluate_features,
-            [(stock_ticker, start_date, end_date, model_type, features) for features in feature_sets],
+            [
+                (stock_ticker, start_date, end_date, model_type, features)
+                for features in feature_sets
+            ],
         )
 
     results_df = pd.DataFrame.from_records(results)
@@ -37,7 +44,9 @@ def run_feature_experiments(stock_ticker, start_date, end_date, model_type):
 
     results_df["stock_profit"] = results_df["stock_profit"].apply(
         lambda x: x["Portfolio Gain %"].dropna().iloc[-1]
-        if isinstance(x, pd.DataFrame) and "Portfolio Gain %" in x.columns and not x["Portfolio Gain %"].dropna().empty
+        if isinstance(x, pd.DataFrame)
+        and "Portfolio Gain %" in x.columns
+        and not x["Portfolio Gain %"].dropna().empty
         else None  # Keep None for now
     )
 

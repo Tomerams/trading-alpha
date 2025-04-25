@@ -14,7 +14,9 @@ def get_data(stock_ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
     df = yf.download(stock_ticker, start=start_date, end=end_date, interval="1d")
 
     if df.empty:
-        raise ValueError(f"No data retrieved for {stock_ticker}. Check the stock_ticker symbol and date range.")
+        raise ValueError(
+            f"No data retrieved for {stock_ticker}. Check the stock_ticker symbol and date range."
+        )
 
     df.index = pd.to_datetime(df.index)
     df = df.sort_index()
@@ -24,10 +26,9 @@ def get_data(stock_ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
         raise KeyError(
             f"'Close' column is missing in the dataset for {stock_ticker}. Available columns: {df.columns.tolist()}"
         )
-    
+
     df.reset_index(inplace=True)
     df.rename(columns={"index": "Date"}, inplace=True)
-
 
     for col in df.columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -36,23 +37,31 @@ def get_data(stock_ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
     df["Target_Tomorrow"] = (df["Close"].shift(-1) - df["Close"]) / df["Close"]
     df["Target_3_Days"] = (df["Close"].shift(-3) - df["Close"]) / df["Close"]
     df["Target_Next_Week"] = (df["Close"].shift(-5) - df["Close"]) / df["Close"]
-    
+    df["Close_Normal"] = df["Close"]
+
+    exclude_cols = [
+        "Date",
+        "Target_Tomorrow",
+        "Target_3_Days",
+        "Target_Next_Week",
+        "Close",
+    ]
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
     feature_cols = [
-        Indicator.VOLUME.value,
-        Indicator.RSI.value,
-        Indicator.ATR.value,
-        Indicator.MOMENTUM.value,
-        Indicator.MOMENTUM_CHANGE.value,
-        Indicator.VOLATILITY.value,
-        Indicator.VOLATILITY_CHANGE.value
+        col
+        for col in numeric_cols
+        if col not in exclude_cols
+        and not set(df[col].dropna().unique()).issubset({0, 1})
     ]
 
-    df[feature_cols] = df[feature_cols].apply(lambda x: (x - x.mean()) / (x.std() + 1e-8))  # Standardize only selected features
+    df[feature_cols] = df[feature_cols].apply(
+        lambda x: (x - x.mean()) / (x.std() + 1e-8)
+    )
 
     df.dropna(inplace=True)
 
-
-    df.to_csv(f"data/{stock_ticker}_indicators_data.csv")
+    df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%Y-%m-%d %H:%M:%S")
+    df.to_csv(f"data/{stock_ticker}_indicators_data.csv", index=False)
 
     return df
 
@@ -90,7 +99,11 @@ def detect_cup_and_handle(prices, order=10):
         return 0
     min_val = prices[min_idx[-1]]
     max_val = prices[-1]
-    if max_val > prices[0] and (max_val - min_val) / min_val > 0.1 and min_idx[-1] < len(prices) * 0.7:
+    if (
+        max_val > prices[0]
+        and (max_val - min_val) / min_val > 0.1
+        and min_idx[-1] < len(prices) * 0.7
+    ):
         return 1
     return 0
 
@@ -173,10 +186,14 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df[Indicator.RSI_2_ABOVE_90.value] = (df[Indicator.RSI_2.value] > 90).astype(int)
     df[Indicator.RS_2_BELOW_10.value] = (df[Indicator.RSI_2.value] < 10).astype(int)
     df[Indicator.RSI_2_CROSS_90.value] = np.where(
-        (df[Indicator.RSI_2.value].shift(1) < 90) & (df[Indicator.RSI_2.value] >= 90), 1, 0
+        (df[Indicator.RSI_2.value].shift(1) < 90) & (df[Indicator.RSI_2.value] >= 90),
+        1,
+        0,
     )
     df[Indicator.RSI_2_CROSS_10.value] = np.where(
-        (df[Indicator.RSI_2.value].shift(1) > 10) & (df[Indicator.RSI_2.value] <= 10), 1, 0
+        (df[Indicator.RSI_2.value].shift(1) > 10) & (df[Indicator.RSI_2.value] <= 10),
+        1,
+        0,
     )
     df[Indicator.RSI_SLOPE.value] = df[Indicator.RSI.value].diff()
     df[Indicator.RSI_DIVERGENCE.value] = (
@@ -190,8 +207,12 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df[Indicator.BOLLINGER_LOWER.value] = df[Indicator.BOLLINGER_MIDDLE.value] - (
         df["Close"].rolling(window=20).std() * 2
     )
-    df[Indicator.BOLINGER_STRONG.value] = (df["Close"] > df[Indicator.BOLLINGER_UPPER.value]).astype(int)
-    df[Indicator.BOLLINGER_2PCT_LOWER.value] = (df["Close"] < df[Indicator.BOLLINGER_LOWER.value] * 1.02).astype(int)
+    df[Indicator.BOLINGER_STRONG.value] = (
+        df["Close"] > df[Indicator.BOLLINGER_UPPER.value]
+    ).astype(int)
+    df[Indicator.BOLLINGER_2PCT_LOWER.value] = (
+        df["Close"] < df[Indicator.BOLLINGER_LOWER.value] * 1.02
+    ).astype(int)
     df[Indicator.RSI_SLOPE.value] = df[Indicator.RSI.value].diff()
     df[Indicator.RSI_DIVERGENCE.value] = (
         (df[Indicator.RSI.value].shift(1) > df[Indicator.RSI.value].shift(2))
@@ -199,29 +220,69 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     ).astype(int)
     df[Indicator.MOMENTUM.value] = df["Close"].diff()
     df[Indicator.VOLATILITY.value] = df["Close"].rolling(window=20).std()
-    df[Indicator.CCI.value] = ta.trend.cci(df["High"], df["Low"], df["Close"], window=20)
+    df[Indicator.CCI.value] = ta.trend.cci(
+        df["High"], df["Low"], df["Close"], window=20
+    )
     df[Indicator.ROC.value] = ta.momentum.roc(df["Close"], window=12)
-    df[Indicator.WILLIAMS_R.value] = ta.momentum.williams_r(df["High"], df["Low"], df["Close"], lbp=14)
+    df[Indicator.WILLIAMS_R.value] = ta.momentum.williams_r(
+        df["High"], df["Low"], df["Close"], lbp=14
+    )
     df[Indicator.TRIX.value] = ta.trend.trix(df["Close"], window=15)
-    df[Indicator.TSI.value] = ta.momentum.tsi(df["Close"], window_slow=25, window_fast=13)
-    df[Indicator.MACD.value] = ta.trend.macd(df["Close"], window_slow=26, window_fast=12)
-    df[Indicator.MACD_SIGNAL.value] = ta.trend.macd_signal(df["Close"], window_slow=26, window_fast=12, window_sign=9)
-    df[Indicator.MACD_HIST.value] = df[Indicator.MACD.value] - df[Indicator.MACD_SIGNAL.value]
-    df[Indicator.ADX.value] = ta.trend.adx(df["High"], df["Low"], df["Close"], window=14)
-    df[Indicator.VWAP.value] = (df["Close"] * df["Volume"]).cumsum() / df["Volume"].cumsum()
-    df[Indicator.ATR.value] = ta.volatility.average_true_range(df["High"], df["Low"], df["Close"], window=14)
-    df[Indicator.STOCHASTIC_K.value] = ta.momentum.stoch(df["High"], df["Low"], df["Close"], window=14, smooth_window=3)
-    df[Indicator.STOCHASTIC_D.value] = df[Indicator.STOCHASTIC_K.value].rolling(window=3).mean()
-    df[Indicator.STOCHASTIC_RSI.value] = ta.momentum.stochrsi(df["Close"], window=14, smooth1=3, smooth2=3)
-    df[Pattern.DOUBLE_TOP.value] = df["Close"].rolling(50).apply(detect_double_top, raw=True)
-    df[Pattern.HEAD_SHOULDERS.value] = df["Close"].rolling(50).apply(detect_head_and_shoulders, raw=True)
-    df[Pattern.CUP_HANDLE.value] = df["Close"].rolling(50).apply(detect_cup_and_handle, raw=True)
-    df[Pattern.TRIPLE_TOP.value] = df["Close"].rolling(50).apply(detect_triple_top, raw=True)
-    df[Pattern.TRIPLE_BOTTOM.value] = df["Close"].rolling(50).apply(detect_triple_bottom, raw=True)
-    df[Pattern.BULLISH_ENGULFING.value] = df.apply(lambda row: detect_bullish_engulfing(df, row.name), axis=1)
-    df[Pattern.BEARISH_ENGULFING.value] = df.apply(lambda row: detect_bearish_engulfing(df, row.name), axis=1)
+    df[Indicator.TSI.value] = ta.momentum.tsi(
+        df["Close"], window_slow=25, window_fast=13
+    )
+    df[Indicator.MACD.value] = ta.trend.macd(
+        df["Close"], window_slow=26, window_fast=12
+    )
+    df[Indicator.MACD_SIGNAL.value] = ta.trend.macd_signal(
+        df["Close"], window_slow=26, window_fast=12, window_sign=9
+    )
+    df[Indicator.MACD_HIST.value] = (
+        df[Indicator.MACD.value] - df[Indicator.MACD_SIGNAL.value]
+    )
+    df[Indicator.ADX.value] = ta.trend.adx(
+        df["High"], df["Low"], df["Close"], window=14
+    )
+    df[Indicator.VWAP.value] = (df["Close"] * df["Volume"]).cumsum() / df[
+        "Volume"
+    ].cumsum()
+    df[Indicator.ATR.value] = ta.volatility.average_true_range(
+        df["High"], df["Low"], df["Close"], window=14
+    )
+    df[Indicator.STOCHASTIC_K.value] = ta.momentum.stoch(
+        df["High"], df["Low"], df["Close"], window=14, smooth_window=3
+    )
+    df[Indicator.STOCHASTIC_D.value] = (
+        df[Indicator.STOCHASTIC_K.value].rolling(window=3).mean()
+    )
+    df[Indicator.STOCHASTIC_RSI.value] = ta.momentum.stochrsi(
+        df["Close"], window=14, smooth1=3, smooth2=3
+    )
+    df[Pattern.DOUBLE_TOP.value] = (
+        df["Close"].rolling(50).apply(detect_double_top, raw=True)
+    )
+    df[Pattern.HEAD_SHOULDERS.value] = (
+        df["Close"].rolling(50).apply(detect_head_and_shoulders, raw=True)
+    )
+    df[Pattern.CUP_HANDLE.value] = (
+        df["Close"].rolling(50).apply(detect_cup_and_handle, raw=True)
+    )
+    df[Pattern.TRIPLE_TOP.value] = (
+        df["Close"].rolling(50).apply(detect_triple_top, raw=True)
+    )
+    df[Pattern.TRIPLE_BOTTOM.value] = (
+        df["Close"].rolling(50).apply(detect_triple_bottom, raw=True)
+    )
+    df[Pattern.BULLISH_ENGULFING.value] = df.apply(
+        lambda row: detect_bullish_engulfing(df, row.name), axis=1
+    )
+    df[Pattern.BEARISH_ENGULFING.value] = df.apply(
+        lambda row: detect_bearish_engulfing(df, row.name), axis=1
+    )
     df[Indicator.SHORT_MOMENTUM.value] = df["Close"].pct_change(3)
-    df[Indicator.VOLATILITY_BREAKOUT.value] = (df["Close"] > df[Indicator.BOLLINGER_UPPER.value]).astype(int)
+    df[Indicator.VOLATILITY_BREAKOUT.value] = (
+        df["Close"] > df[Indicator.BOLLINGER_UPPER.value]
+    ).astype(int)
     df[Indicator.RSI_CROSS_50.value] = np.where(
         (df[Indicator.RSI.value].shift(1) < 50) & (df[Indicator.RSI.value] >= 50), 1, 0
     )
@@ -230,7 +291,9 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df[Indicator.VOLUME_TRAND.value] = df["Volume"].pct_change(5)
     df[Indicator.RSI_DELTA.value] = df[Indicator.RSI.value].diff()
     df[Indicator.MACD_DELTA.value] = df[Indicator.MACD.value].diff()
-    df[Indicator.BOLLINGER_WIDTH.value] = df[Indicator.BOLLINGER_UPPER.value] - df[Indicator.BOLLINGER_LOWER.value]
+    df[Indicator.BOLLINGER_WIDTH.value] = (
+        df[Indicator.BOLLINGER_UPPER.value] - df[Indicator.BOLLINGER_LOWER.value]
+    )
     df[Indicator.MOMENTUM_CHANGE.value] = df[Indicator.MOMENTUM.value].diff()
     df[Indicator.VOLATILITY_CHANGE.value] = df[Indicator.VOLATILITY.value].diff()
 
@@ -240,7 +303,7 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
 if __name__ == "__main__":
     CONFIG = {
         "stock_ticker": "TQQQ",
-        "start_date": "2012-06-06",
+        "start_date": "2022-06-06",
         "end_date": "2025-01-01",
     }
 

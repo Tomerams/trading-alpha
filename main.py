@@ -3,7 +3,9 @@ from model_training import train_and_evaluate
 from prediction import predict_model
 from model_backtest import backtest_model
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 def run_trading_pipeline(

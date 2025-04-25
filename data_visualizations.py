@@ -1,29 +1,34 @@
 import pandas as pd
-import yfinance as yf
 import matplotlib.pyplot as plt
+from data_processing import get_data
 
+# Load backtest results
 trade_df = pd.read_csv("data/backtest_results.csv")
-trade_df["Date"] = pd.to_datetime(trade_df["Date"]).dt.date  # Convert to YYYY-MM-DD format
 
-ticker = "TQQQ"
+trade_df["Date"] = pd.to_datetime(trade_df["Date"]).dt.normalize()  # remove hours
+
+
+# Fetch stock data
+ticker = "FNGA"
 start_date = trade_df["Date"].min().strftime("%Y-%m-%d")
 end_date = trade_df["Date"].max().strftime("%Y-%m-%d")
 
 print(f"📅 Fetching stock data for {ticker} from {start_date} to {end_date}...")
 
-stock_data = yf.download(ticker, start=start_date, end=end_date, interval="1d")
+stock_data = get_data(ticker, start_date=start_date, end_date=end_date)
 
-if isinstance(stock_data.columns, pd.MultiIndex):
-    stock_data.columns = stock_data.columns.get_level_values(0)  # Flatten multi-index columns
+stock_data["Date"] = pd.to_datetime(
+    stock_data["Date"]
+).dt.normalize()  # normalize as well
 
-stock_data.reset_index(inplace=True)  # Reset index to make "Date" a column
-stock_data["Date"] = pd.to_datetime(stock_data["Date"]).dt.date  # Convert Date to YYYY-MM-DD format
 
-merged_df = pd.merge(stock_data[["Date", "Close"]], trade_df, on="Date", how="left")
+# Merge by date
+merged_df = pd.merge(stock_data, trade_df, on="Date", how="left")
 
 buy_trades = merged_df[merged_df["Trade Type"] == "BUY"]
 sell_trades = merged_df[merged_df["Trade Type"] == "SELL"]
 
+# Plotting
 plt.figure(figsize=(12, 6))
 plt.plot(merged_df["Date"], merged_df["Close"], label="Stock Price", color="blue")
 
@@ -50,5 +55,5 @@ plt.title(f"Trading Strategy for {ticker}")
 plt.legend()
 plt.xticks(rotation=45)
 plt.grid()
-
+plt.tight_layout()
 plt.show()
