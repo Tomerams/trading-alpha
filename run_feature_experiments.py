@@ -69,10 +69,10 @@ if __name__ == "__main__":
         multiprocessing.set_start_method("spawn", force=True)
     except RuntimeError:
         pass
-    ticker = "FNGU"
-    start_date = "2019-01-01"
-    end_date = "2025-01-01"
-    model_type = "CNNLSTM"
+    ticker = "FNGA"
+    start_date = "2020-01-01"
+    end_date = "2023-05-05"
+    model_type = "TransformerRNN"
 
     df_results = run_feature_experiments(ticker, start_date, end_date, model_type)
     print(df_results.head())
