@@ -1,12 +1,25 @@
 from enum import Enum
 
-USE_GANN_FEATURES = False
 
-GANN_FEATURES = {
-    "angles": {"use": True, "windows": [0.5, 1, 2]},
-    "cycles": {"use": True, "up_days": 5, "down_days": 3},
-}
+class GannFeaturs(Enum):
+    ANGLE_0_5D = "Gann_Angle_0.5D"
+    ANGLE_1D = "Gann_Angle_1D"
+    ANGLE_2D = "Gann_Angle_2D"
+    UP_CYCLE_LENGTH = "Gann_Up_Cycle_Length"
+    DOWN_CYCLE_LENGTH = "Gann_Down_Cycle_Length"
+    FIB_23_ABOVE = "Fibonacci_23_Above"
+    FIB_38_ABOVE = "Fibonacci_38_Above"
+    FIB_50_ABOVE = "Fibonacci_50_Above"
+    FIB_62_ABOVE = "Fibonacci_62_Above"
 
+
+class ExternalFeatures(Enum):
+    VIX_CLOSE = "VIX_Close"
+    SPY_CLOSE = "SPY_Close"
+    US10Y_YIELD = "US10Y_Yield"
+    US2Y_YIELD = "US2Y_Yield"
+    SPY_VIX_RATIO = "SPY_VIX_RATIO"
+    YIELD_SPREAD_10Y_2Y = "YIELD_SPREAD_10Y_2Y"
 
 class Indicator(Enum):
     RSI = "RSI"
@@ -56,6 +69,11 @@ class Indicator(Enum):
     MOMENTUM_CHANGE = "Momentum_Change"
     VOLATILITY_CHANGE = "Volatility_Change"
     VOLUME = "Volume"
+    RSI_BOLLINGER_MIDDLE = "RSI_Bollinger_Middle"
+    RSI_BOLLINGER_UPPER = "RSI_Bollinger_Upper"
+    RSI_BOLLINGER_LOWER = "RSI_Bollinger_Lower"
+    RSI_BOLLINGER_STRONG_ABOVE = "RSI_Bollinger_Strong_Above"
+    RSI_BOLLINGER_STRONG_BELOW = "RSI_Bollinger_Strong_Below"
 
 
 class Pattern(Enum):
@@ -71,6 +89,7 @@ class Pattern(Enum):
 FEATURE_COLUMNS = [
     *[indicator.value for indicator in Indicator],
     *[pattern.value for pattern in Pattern],
+    *[gann_feture.value for gann_feture in GannFeaturs],
 ]
 
 MODEL_PARAMS = {
