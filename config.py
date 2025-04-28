@@ -21,6 +21,7 @@ class ExternalFeatures(Enum):
     SPY_VIX_RATIO = "SPY_VIX_RATIO"
     YIELD_SPREAD_10Y_2Y = "YIELD_SPREAD_10Y_2Y"
 
+
 class Indicator(Enum):
     RSI = "RSI"
     RSI_2 = "RSI_2"
@@ -94,9 +95,14 @@ FEATURE_COLUMNS = [
 
 MODEL_PARAMS = {
     "hidden_size": 128,
-    "output_size": 1,
+    "output_size": 3,
     "learning_rate": 0.001,
-    "epochs": 60,
+    "epochs": 5,
+    "seq_len": 5,
+    "start_date": "2020-01-01",
+    "end_date": "2024-01-01",
+    "buying_threshold": 0.0,
+    "selling_threshold": 0.0,
 }
 
 BACKTEST_PARAMS = {

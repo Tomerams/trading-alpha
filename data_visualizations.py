@@ -9,7 +9,7 @@ trade_df["Date"] = pd.to_datetime(trade_df["Date"]).dt.normalize()  # remove hou
 
 
 # Fetch stock data
-ticker = "FNGA"
+ticker = "QQQ"
 start_date = trade_df["Date"].min().strftime("%Y-%m-%d")
 end_date = trade_df["Date"].max().strftime("%Y-%m-%d")
 

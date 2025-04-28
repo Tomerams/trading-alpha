@@ -1,5 +1,6 @@
 import os
 import joblib
+import numpy as np
 import pandas as pd
 import torch
 from config import MODEL_PARAMS
@@ -62,12 +63,14 @@ def load_model(ticker, model_type):
 
     features = joblib.load(features_filename)
     scaler = joblib.load(scaler_filename)
+    checkpoint = torch.load(model_filename, map_location="cpu")
+    seq_len = checkpoint.get("seq_len", 1)
 
     model = get_model(input_size=len(features), model_type=model_type)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
-    return model, scaler, features
+    return model, scaler, features, seq_len
 
 
 def time_based_split(df: pd.DataFrame):
@@ -87,3 +90,16 @@ def time_based_split(df: pd.DataFrame):
     )
 
     return train_df, test_df, backtest_df
+
+
+def add_noise(X: np.ndarray, level: float = 0.01) -> np.ndarray:
+    noise = np.random.normal(0, level, X.shape)
+    return X + noise
+
+
+def create_sequences(df, feature_cols, target_cols, seq_len: int):
+    X, y = [], []
+    for i in range(len(df) - seq_len):
+        X.append(df[feature_cols].iloc[i : i + seq_len].values)
+        y.append(df[target_cols].iloc[i + seq_len].values)
+    return np.array(X), np.array(y)

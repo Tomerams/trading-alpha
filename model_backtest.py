@@ -1,148 +1,193 @@
 import math
-import torch
+import numpy as np
 import pandas as pd
+import torch
 import logging
 from data_processing import get_data
-from config import BACKTEST_PARAMS
 from utilities import load_model
 from sklearn.metrics import precision_score, recall_score, mean_absolute_error
+from config import MODEL_PARAMS
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 
 def backtest_model(
-    stock_ticker, start_date, end_date, trained_model, data_scaler, selected_features, use_leverage=False, trade_ticker=None
+    stock_ticker: str,
+    start_date: str,
+    end_date: str,
+    trained_model: torch.nn.Module,
+    data_scaler,
+    selected_features: list,
+    use_leverage: bool = False,
+    trade_ticker: str = None,
+    buying_threshold: float = 0.0,
+    selling_threshold: float = 0.0,
+    verbose: bool = True,
+    seq_len: int = 1,
+    max_history: int = None,
 ):
-    logging.info(f"📊 Fetching data for {stock_ticker} from {start_date} to {end_date}...")
-
+    logging.info(
+        f"📊 Fetching data for {stock_ticker} from {start_date} to {end_date}..."
+    )
     df = get_data(stock_ticker, start_date, end_date)
     if df is None or df.empty:
-        raise ValueError("⚠️ No data available after applying the date range. Check `get_data()` output.")
-
+        raise ValueError("No data for backtest.")
+    if max_history:
+        df = df.tail(max_history).reset_index(drop=True)
     logging.info(f"✅ Data loaded with shape: {df.shape}")
 
-    if use_leverage and trade_ticker:
-        trade_df = get_data(trade_ticker, start_date, end_date)
-        if trade_df is None or trade_df.empty:
-            raise ValueError("⚠️ No trade ticker data available for leverage option.")
-        df = pd.merge(df, trade_df[["Date", "Close"]].rename(columns={"Close": "traded_close"}), on="Date", how="left")
-    else:
-        df["traded_close"] = df["Close"]
-
+    df["traded_close"] = df["Close"]
     df["Target_Tomorrow"] = df["Close"].shift(-1)
     df["Target_3_Days"] = df["Close"].shift(-3)
     df["Target_Next_Week"] = df["Close"].shift(-5)
     df.dropna(inplace=True)
 
-    trade_log = []
+    if seq_len > 1:
+        X = np.array(
+            [
+                df[selected_features].iloc[i : i + seq_len].values
+                for i in range(len(df) - seq_len)
+            ]
+        )
+        traded_close = df["traded_close"].values[seq_len:]
+        dates = df["Date"].values[seq_len:]
+    else:
+        X = df[selected_features].values
+        traded_close = df["traded_close"].values
+        dates = df["Date"].values
 
-    X = df[selected_features].values
-    X_scaled = data_scaler.transform(X)
-    X_tensor = torch.tensor(X_scaled, dtype=torch.float32).view(X_scaled.shape[0], 1, X_scaled.shape[1])
+    if seq_len > 1:
+        n_feat = X.shape[2]
+        X_flat = X.reshape(-1, n_feat)
+        X_scaled = data_scaler.transform(X_flat).reshape(X.shape)
+    else:
+        X_scaled = data_scaler.transform(X)
 
+    trained_model.eval()
     with torch.no_grad():
-        predictions = trained_model(X_tensor).numpy()
+        X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
+        if seq_len == 1:
+            X_tensor = X_tensor.unsqueeze(1)
+        preds = trained_model(X_tensor).cpu().numpy()
 
-    df["Predicted_Tomorrow"] = df["Close"] * (predictions[:, 0] + 1)
-    df["Predicted_3_Days"] = df["Close"] * (predictions[:, 1] + 1)
-    df["Predicted_Next_Week"] = df["Close"] * (predictions[:, 2] + 1)
+    if verbose:
+        last = len(preds) - 1
+        print(f"🔮 Prediction Tomorrow:     {preds[last, 0]:.4f}")
+        print(f"🔮 Prediction Next 3 Days:  {preds[last, 1]:.4f}")
+        print(f"🔮 Prediction Next Week:    {preds[last, 2]:.4f}")
 
-    df["Predicted_Direction_Tomorrow"] = (df["Predicted_Tomorrow"] > df["Close"]).astype(int)
-    df["Predicted_Direction_3_Days"] = (df["Predicted_3_Days"] > df["Close"]).astype(int)
-    df["Predicted_Direction_Next_Week"] = (df["Predicted_Next_Week"] > df["Close"]).astype(int)
-
-    df["Actual_Direction_Tomorrow"] = (df["Target_Tomorrow"] > df["Close"]).astype(int)
-    df["Actual_Direction_3_Days"] = (df["Target_3_Days"] > df["Close"]).astype(int)
-    df["Actual_Direction_Next_Week"] = (df["Target_Next_Week"] > df["Close"]).astype(int)
-
-    cash = BACKTEST_PARAMS["initial_balance"]
+    cash = MODEL_PARAMS.get("initial_balance", 10000)
     shares = 0
     last_buy_price = None
     max_loss_per_trade = 0
+    trade_log = []
 
-    buying_threshold = 0.005
-    selling_threshold = -0.01
-
-    for i in range(len(df) - 1):
-        trade_date = df.iloc[i]["Date"]
-        stock_price = df.iloc[i]["traded_close"]
-        stop_loss_triggered = shares > 0 and (stock_price < last_buy_price * 0.97)
-
-        avg_predicted_return = (predictions[i, 0] + predictions[i, 1] + predictions[i, 2]) / 3
-        transaction_fee = (
-            max(BACKTEST_PARAMS["buy_sell_fee_per_share"] * shares, BACKTEST_PARAMS["minimum_fee"])
-            if shares > 0 else 0
+    for i in range(len(traded_close) - 1):
+        date = dates[i]
+        price = traded_close[i]
+        avg_ret = preds[i].mean()
+        stop_loss = shares > 0 and price < last_buy_price * 0.97
+        fee = (
+            max(
+                MODEL_PARAMS.get("buy_sell_fee_per_share", 0.01) * shares,
+                MODEL_PARAMS.get("minimum_fee", 1),
+            )
+            if shares > 0
+            else 0
         )
 
-        if avg_predicted_return > buying_threshold and df.iloc[i]["Predicted_Next_Week"] > df.iloc[i]["Predicted_Tomorrow"] and shares == 0:
-            shares = math.floor((cash - transaction_fee) / stock_price)
-            cash -= shares * stock_price
-            last_buy_price = stock_price
-            trade_log.append([trade_date, "BUY", stock_price, shares * stock_price, None, None, None])
-
-        elif (avg_predicted_return < selling_threshold and shares > 0) or stop_loss_triggered:
-            tax_paid = BACKTEST_PARAMS["tax_rate"] * (stock_price - last_buy_price) * shares
-            cash += (shares * stock_price) - transaction_fee - tax_paid
+        if shares == 0 and avg_ret > buying_threshold and preds[i, 2] > preds[i, 0]:
+            shares = math.floor((cash - fee) / price)
+            cash -= shares * price + fee
+            last_buy_price = price
+            trade_log.append(
+                [date, "BUY", price, cash + shares * price, None, None, None]
+            )
+        elif shares > 0 and (avg_ret < selling_threshold or stop_loss):
+            tax = MODEL_PARAMS.get("tax_rate", 0.25) * (price - last_buy_price) * shares
+            cash += shares * price - fee - tax
+            change_pct = (price - last_buy_price) / last_buy_price * 100
+            port_pct = (
+                (cash - MODEL_PARAMS.get("initial_balance", 10000))
+                / MODEL_PARAMS.get("initial_balance", 10000)
+                * 100
+            )
+            max_loss_per_trade = min(max_loss_per_trade, change_pct)
+            trade_log.append([date, "SELL", price, cash, change_pct, port_pct, tax])
             shares = 0
-            price_change = ((stock_price - last_buy_price) / last_buy_price) * 100 if last_buy_price else None
-            portfolio_gain = ((cash - BACKTEST_PARAMS["initial_balance"]) / BACKTEST_PARAMS["initial_balance"]) * 100
 
-            if price_change and price_change < 0:
-                max_loss_per_trade = min(max_loss_per_trade, price_change)
+    final_val = cash + shares * traded_close[-1]
+    net_profit = (
+        (final_val - MODEL_PARAMS.get("initial_balance", 10000))
+        / MODEL_PARAMS.get("initial_balance", 10000)
+        * 100
+    )
+    ticker_change = (traded_close[-1] / traded_close[0]) * 100
 
-            trade_log.append([trade_date, "SELL", stock_price, cash, price_change, portfolio_gain, tax_paid])
+    dir_actual = np.vstack(
+        [
+            (df["Target_Tomorrow"].values[seq_len:] > traded_close).astype(int),
+            (df["Target_3_Days"].values[seq_len:] > traded_close).astype(int),
+            (df["Target_Next_Week"].values[seq_len:] > traded_close).astype(int),
+        ]
+    ).T
+    dir_pred = (preds > 0).astype(int)
 
-    total_value = cash + shares * df.iloc[-1]["traded_close"]
-    net_profit = (total_value / BACKTEST_PARAMS["initial_balance"]) * 100
-    ticker_change = (df["traded_close"].iloc[-1] / df["traded_close"].iloc[0]) * 100
+    horizons = ["Tomorrow", "3 Days", "Next Week"]
+    for idx, name in enumerate(horizons):
+        prec = precision_score(dir_actual[:, idx], dir_pred[:, idx], zero_division=0)
+        rec = recall_score(dir_actual[:, idx], dir_pred[:, idx], zero_division=0)
+        mae = mean_absolute_error(
+            df[
+                f'Target_{"Tomorrow" if idx==0 else "3_Days" if idx==1 else "Next_Week"}'
+            ].values[seq_len:],
+            preds[:, idx],
+        )
+        if verbose:
+            print(f"🌟 Precision ({name}): {prec:.4f}")
+            print(f"🔍 Recall    ({name}): {rec:.4f}")
+            print(f"📊 MAE       ({name}): {mae:.4f}")
+    if verbose:
+        print(f"📉 Ticker Change: {ticker_change:.2f}%")
+        print(f"📈 Portfolio    : {net_profit:.2f}%")
+        print(f"⚠️ Max Loss     : {max_loss_per_trade:.2f}%")
 
-    precision_tomorrow = precision_score(df["Actual_Direction_Tomorrow"], df["Predicted_Direction_Tomorrow"], zero_division=0)
-    recall_tomorrow = recall_score(df["Actual_Direction_Tomorrow"], df["Predicted_Direction_Tomorrow"], zero_division=0)
+    pd.DataFrame(
+        trade_log,
+        columns=[
+            "Date",
+            "Type",
+            "Price",
+            "Portfolio Value",
+            "Price Change %",
+            "Portfolio %",
+            "Tax",
+        ],
+    ).to_csv("data/backtest_trades.csv", index=False)
 
-    precision_3_days = precision_score(df["Actual_Direction_3_Days"], df["Predicted_Direction_3_Days"], zero_division=0)
-    recall_3_days = recall_score(df["Actual_Direction_3_Days"], df["Predicted_Direction_3_Days"], zero_division=0)
+    return net_profit, pd.DataFrame(trade_log), ticker_change, max_loss_per_trade
 
-    precision_next_week = precision_score(df["Actual_Direction_Next_Week"], df["Predicted_Direction_Next_Week"], zero_division=0)
-    recall_next_week = recall_score(df["Actual_Direction_Next_Week"], df["Predicted_Direction_Next_Week"], zero_division=0)
-
-    mae_tomorrow = mean_absolute_error(df["Target_Tomorrow"], df["Predicted_Tomorrow"])
-    mae_3_days = mean_absolute_error(df["Target_3_Days"], df["Predicted_3_Days"])
-    mae_next_week = mean_absolute_error(df["Target_Next_Week"], df["Predicted_Next_Week"])
-
-    trade_df = pd.DataFrame(trade_log, columns=["Date", "Trade Type", "Price", "Portfolio Value", "Price Change %", "Portfolio Gain %", "Tax Paid"])
-    trade_df.to_csv("data/backtest_results.csv", index=False)
-
-    print(f"📉 Traded Ticker Change: {ticker_change:.2f}%")
-    print(f"📈 Portfolio Change: {net_profit:.2f}%")
-    print(f"⚠️ Maximum Loss per Trade: {max_loss_per_trade:.2f}%")
-    print(f"🌟 Precision (Tomorrow): {precision_tomorrow:.4f}")
-    print(f"🔍 Recall (Tomorrow): {recall_tomorrow:.4f}")
-    print(f"🌟 Precision (3 Days): {precision_3_days:.4f}")
-    print(f"🔍 Recall (3 Days): {recall_3_days:.4f}")
-    print(f"🌟 Precision (Next Week): {precision_next_week:.4f}")
-    print(f"🔍 Recall (Next Week): {recall_next_week:.4f}")
-    print(f"📊 MAE (Tomorrow): {mae_tomorrow:.4f}")
-    print(f"📊 MAE (3 Days): {mae_3_days:.4f}")
-    print(f"📊 MAE (Next Week): {mae_next_week:.4f}")
-
-    return net_profit, trade_df, ticker_change, max_loss_per_trade
 
 if __name__ == "__main__":
-    signal_ticker = input("🔎 Enter the signal ticker (default QQQ): ").strip().upper() or "QQQ"
-    trade_ticker = input("💸 Enter the trade ticker (default TQQQ): ").strip().upper() or "TQQQ"
-    start_date = input("📅 Enter start date (YYYY-MM-DD) (default 2015-01-01): ").strip() or "2015-01-01"
-    end_date = input("📅 Enter end date (YYYY-MM-DD) (default 2024-04-24): ").strip() or "2024-04-24"
-    model_type = "TransformerRNN"
-
-    trained_model, data_scaler, best_features = load_model(signal_ticker, model_type)
-
-    print(f"🏁 Running backtest using signals from {signal_ticker} and trading {trade_ticker}...")
+    ticker = input(
+        "🔎 Signal ticker (default QQQ): "
+    ).strip().upper() or MODEL_PARAMS.get("ticker", "QQQ")
+    model, scaler, feature_cols, seq_len = load_model(
+        ticker, MODEL_PARAMS.get("model_type", "TransformerRNN")
+    )
+    print(f"▶️ Loaded model seq_len={seq_len}, features={len(feature_cols)} cols")
+    start = MODEL_PARAMS.get("start_date")
+    end = MODEL_PARAMS.get("end_date")
     backtest_model(
-        stock_ticker=signal_ticker,
-        start_date=start_date,
-        end_date=end_date,
-        trained_model=trained_model,
-        data_scaler=data_scaler,
-        selected_features=best_features,
-        use_leverage=(trade_ticker != signal_ticker),
-        trade_ticker=trade_ticker,
+        stock_ticker=ticker,
+        start_date=start,
+        end_date=end,
+        trained_model=model,
+        data_scaler=scaler,
+        selected_features=feature_cols,
+        buying_threshold=MODEL_PARAMS.get("buying_threshold", 0.0),
+        selling_threshold=MODEL_PARAMS.get("selling_threshold", 0.0),
+        seq_len=seq_len,
     )
