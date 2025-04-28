@@ -38,6 +38,7 @@ def get_data(stock_ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
         "Target_Next_Week",
         "Close",
     ]
+
     feature_cols = [
         col
         for col in df.select_dtypes(include=[np.number]).columns
@@ -47,6 +48,10 @@ def get_data(stock_ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
     df[feature_cols] = df[feature_cols].apply(
         lambda x: (x - x.mean()) / (x.std() + 1e-8)
     )
+
+    df["Month"] = df["Date"].dt.month
+    df["Weekday"] = df["Date"].dt.weekday
+
     df.dropna(inplace=True)
 
     df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%Y-%m-%d %H:%M:%S")

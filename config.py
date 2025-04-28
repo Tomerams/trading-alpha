@@ -86,11 +86,17 @@ class Pattern(Enum):
     BULLISH_ENGULFING = "bullish_engulfing"
     BEARISH_ENGULFING = "bearish_engulfing"
 
+class Dates(Enum):
+    MONTH = "Month"
+    WEEKDAY = "Weekday"
+
 
 FEATURE_COLUMNS = [
     *[indicator.value for indicator in Indicator],
     *[pattern.value for pattern in Pattern],
     *[gann_feture.value for gann_feture in GannFeaturs],
+    *[feat.value for feat in ExternalFeatures],
+    *[date.value for date in Dates],
 ]
 
 MODEL_PARAMS = {
