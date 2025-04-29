@@ -119,12 +119,8 @@ def backtest_model(
             shares = 0
 
     final_val = cash + shares * traded_close[-1]
-    net_profit = (
-        (final_val - MODEL_PARAMS.get("initial_balance", 10000))
-        / MODEL_PARAMS.get("initial_balance", 10000)
-        * 100
-    )
-    ticker_change = (traded_close[-1] / traded_close[0]) * 100
+    net_profit = (final_val / MODEL_PARAMS.get("initial_balance", 10000) - 1) * 100
+    ticker_change = ((traded_close[-1] / traded_close[0]) - 1) * 100
 
     dir_actual = np.vstack(
         [

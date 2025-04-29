@@ -86,6 +86,7 @@ class Pattern(Enum):
     BULLISH_ENGULFING = "bullish_engulfing"
     BEARISH_ENGULFING = "bearish_engulfing"
 
+
 class Dates(Enum):
     MONTH = "Month"
     WEEKDAY = "Weekday"
@@ -103,12 +104,13 @@ MODEL_PARAMS = {
     "hidden_size": 128,
     "output_size": 3,
     "learning_rate": 0.001,
-    "epochs": 5,
-    "seq_len": 5,
+    "epochs": 60,
+    "seq_len": 20,
     "start_date": "2020-01-01",
     "end_date": "2024-01-01",
-    "buying_threshold": 0.0,
-    "selling_threshold": 0.0,
+    "buying_threshold": 0.002,
+    "selling_threshold": 0.015,
+    "ticker": "QQQ",
 }
 
 BACKTEST_PARAMS = {
