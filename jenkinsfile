@@ -1,0 +1,120 @@
+@Library("shared-library") _
+pipeline {
+    agent {
+        label 'docker-agent'
+    }
+
+    options {
+        timeout(time: 10, unit: 'MINUTES')
+    }
+
+    environment {
+        def SERVICE = 'payments-service'
+        def SLACK_CHANNEL = '#jenship-cicd-travel'
+    }
+
+    parameters {
+        string(name: 'FUNCTION_NAME_STAGING', defaultValue: 'payments-service-staging', description: 'AWS Lambda function name')
+        string(name: 'FUNCTION_NAME_PROD', defaultValue: 'payments-service', description: 'AWS Lambda function name')
+    }
+
+    stages {
+        stage ('Build docker image') {
+            when {
+                anyOf {
+                    branch 'develop'
+                    branch 'master'
+                }
+            }
+            steps {
+                script {
+                    def isBuildPassed = buildDockerImage(SERVICE: "${env.SERVICE}", TAG: "${env.BRANCH_NAME}-v${BUILD_NUMBER}")
+                    
+                    if (isBuildPassed == false) {
+                        error "Docker build failed. Stopping pipeline."
+                    }
+                }
+            }
+
+            post {
+                always {
+                    jiraSendBuildInfo site: 'amsalem.atlassian.net'
+                }
+            }
+        }
+
+        stage('Deploy to Lambda') {
+            when {
+                anyOf {
+                    branch 'develop'
+                    branch 'master'
+                }
+            }
+
+            steps {
+                script {
+                    def ecrAccount
+                    def funcName
+                    if (env.BRANCH_NAME == 'develop') {
+                        ecrAccount = "${env.STAGING_ID}"
+                        funcName = "${params.FUNCTION_NAME_STAGING}"
+                        setAwsTempCredentials(ecrAccount: ecrAccount,
+                            ECR_ROLE_NAME: "${env.ECR_ROLE_NAME}",
+                            REGION: "${env.REGION}")
+                    } else {
+                        ecrAccount = "${env.PROD_ID}"
+                        funcName = "${params.FUNCTION_NAME_PROD}"
+                    }
+
+                    def isPushToEcrSuccess = pushToECR(REGION: "${env.REGION}",
+                        ecrAccount: ecrAccount,
+                        SERVICE: "${env.SERVICE}",
+                        TAG: "${env.BRANCH_NAME}-v${BUILD_NUMBER}"
+                    )
+
+                    if (isPushToEcrSuccess == false) {
+                        error "Push image to ECR failed. Stopping pipeline."
+                    }
+
+                    def isDeployPassed = updateAwsLambda(
+                        ecrAccount: ecrAccount,
+                        funcName: funcName,
+                        REGION: "${env.REGION}",
+                        SERVICE: "${env.SERVICE}",
+                        TAG: "${env.BRANCH_NAME}-v${BUILD_NUMBER}"
+                    )
+                    
+                    if (isDeployPassed == false) {
+                        error "Docker deployment to Lambda failed. Stopping pipeline."
+                    }
+                }
+            }
+            
+            post {
+                always {
+                    script {
+                        if (env.BRANCH_NAME == 'develop') {
+                            jiraSendDeploymentInfo environmentId: 'staging', environmentName: 'staging', environmentType: 'staging', issueKeys: [], site: 'amsalem.atlassian.net'
+                        } else if (env.BRANCH_NAME == 'master') {
+                            jiraSendDeploymentInfo environmentId: 'production', environmentName: 'production', environmentType: 'production', issueKeys: [], site: 'amsalem.atlassian.net'
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            cleanJenkinsWorkspace()
+        }
+
+        success {
+            sendSlackNotification(SLACK_CHANNEL: "${env.SLACK_CHANNEL}", COLOR: 'good', MESSAGE: "${currentBuild.result}: ${currentBuild.fullDisplayName}")
+        }
+
+        failure {
+            sendSlackNotification(SLACK_CHANNEL: "${env.SLACK_CHANNEL}", COLOR: 'danger', MESSAGE: "${currentBuild.result}: ${currentBuild.fullDisplayName}")
+        }         
+    }
+}

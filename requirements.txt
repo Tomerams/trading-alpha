@@ -1,0 +1,8 @@
+uvicorn
+flake8
+pytest
+pydantic
+fastapi
+python-dotenv
+mangum
+pymongo

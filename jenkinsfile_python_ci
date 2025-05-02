@@ -1,0 +1,74 @@
+@Library("shared-library") _
+pipeline {
+    
+   agent { 
+        label 'ecs-fargate-spot-agent-python'
+    }
+    
+   options {
+        timeout(time: 10, unit: 'MINUTES')
+    }
+
+   environment {
+        def REPO = 'payments-service'
+        def SLACK_CHANNEL = '#jenship-ci-travel'
+    }
+
+   stages {
+      stage('Source Code Management') {
+        steps {
+            echo 'Get Latest'
+            getLatest(BRANCH_NAME: "${env.BRANCH_NAME}", REPO: "${env.REPO}")
+         }
+
+      }
+
+      stage('Setup Virtual Environment') {
+            steps {
+                script {
+                    echo 'set up a virtual environment and install requirements...'
+                    installDependenciesPython()
+                }
+            }
+      }
+
+      stage ('Test') {
+        steps {
+            echo 'test...'
+            // TO-DO : sh '. venv/bin/activate && pytest'
+        }
+      }
+
+      stage('Linting') {
+        steps {
+            script {
+                echo 'run code linting using flake8...'
+                lintPythonCode()
+            }
+        }
+
+        post {
+            always {
+                jiraSendBuildInfo site: 'amsalem.atlassian.net'
+            }
+
+            failure {
+                echo 'tests failed'
+            }
+        }
+
+      }
+   }
+   post {
+       always {
+            jiraSendBuildInfo site: 'amsalem.atlassian.net'
+            cleanJenkinsWorkspace()
+        }
+        success {
+            sendSlackNotification(SLACK_CHANNEL: "${env.SLACK_CHANNEL}", COLOR: 'good', MESSAGE: "${currentBuild.result}: ${currentBuild.fullDisplayName}")
+        }
+        failure {
+            sendSlackNotification(SLACK_CHANNEL: "${env.SLACK_CHANNEL}", COLOR: 'danger', MESSAGE: "${currentBuild.result}: ${currentBuild.fullDisplayName}")
+        }
+    }
+}
