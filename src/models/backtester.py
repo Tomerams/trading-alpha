@@ -15,54 +15,43 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+
 def backtest_model(request_data: UpdateIndicatorsData, verbose: bool = True) -> dict:
-    """
-    Backtest trading strategy for the given stock and trained model.
-    Returns a dict with summary metrics and a list of trade signals.
-    """
-    # Load model and params
-    ticker = request_data.stock_ticker
-    start, end = request_data.start_date, request_data.end_date
-    model_type = MODEL_PARAMS.get("model_type", "LSTM")
+    # 1) Load model + scaler + the exact feature list used in training
+    ticker      = request_data.stock_ticker
+    model_type  = MODEL_PARAMS.get("model_type", "LSTM")
     model, scaler, feature_cols = load_model(ticker, model_type)
-    seq_len = MODEL_PARAMS.get("seq_len", 10)
+    seq_len     = MODEL_PARAMS.get("seq_len", 10)
+    target_cols = MODEL_PARAMS.get("target_cols", [])
 
-    # Fetch data
-    logging.info(f"📊 Fetching data for {ticker} from {start} to {end}...")
+    # 2) Fetch enriched data (this now already includes shift-targets, extrema, trend, etc.)
     df = get_data(request_data)
-    if df is None or df.empty:
-        raise ValueError("No data for backtest.")
-    df["Date"] = pd.to_datetime(df["Date"])
+    df["Date"]  = pd.to_datetime(df["Date"])
     df["Close"] = pd.to_numeric(df["Close"])
-
-    # Targets
-    df["Target_Tomorrow"] = (df["Close"].shift(-1) - df["Close"]) / df["Close"]
-    df["Target_3_Days"]   = (df["Close"].shift(-3) - df["Close"]) / df["Close"]
-    df["Target_Next_Week"] = (df["Close"].shift(-5) - df["Close"]) / df["Close"]
     df.dropna(inplace=True)
 
-    # Prepare sequences
+    # 3) Build your input matrix X and align dates/prices/true-Y
     if seq_len > 1:
-        X = np.array([df[feature_cols].iloc[i:i+seq_len].values
-                      for i in range(len(df) - seq_len)])
-        dates = df["Date"].iloc[seq_len:].reset_index(drop=True)
+        X      = np.stack([df[feature_cols].iloc[i : i + seq_len].values
+                           for i in range(len(df) - seq_len)])
+        dates  = df["Date"].iloc[seq_len:].reset_index(drop=True)
         prices = df["Close"].iloc[seq_len:].values
-        y_true = df[["Target_Tomorrow","Target_3_Days","Target_Next_Week"]].iloc[seq_len:].values
+        y_true = df[target_cols].iloc[seq_len:].values
     else:
-        X = df[feature_cols].values
-        dates = df["Date"].reset_index(drop=True)
+        X      = df[feature_cols].values
+        dates  = df["Date"].reset_index(drop=True)
         prices = df["Close"].values
-        y_true = df[["Target_Tomorrow","Target_3_Days","Target_Next_Week"]].values
+        y_true = df[target_cols].values
 
-    # Scale
+    # 4) Scale with the exact same scaler you saved
     if seq_len > 1:
-        n_feat = X.shape[2]
-        X_flat = X.reshape(-1, n_feat)
+        n_feat   = X.shape[2]
+        X_flat   = X.reshape(-1, n_feat)
         X_scaled = scaler.transform(X_flat).reshape(X.shape)
     else:
         X_scaled = scaler.transform(X)
 
-    # Predict
+    # 5) Predict
     model.eval()
     with torch.no_grad():
         X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
@@ -70,62 +59,64 @@ def backtest_model(request_data: UpdateIndicatorsData, verbose: bool = True) -> 
             X_tensor = X_tensor.unsqueeze(1)
         preds = model(X_tensor).cpu().numpy()
 
-    # Show last preds
+    # 6) (Optional) print last-bar predictions
     if verbose:
-        last = len(preds) - 1
-        print(f"🔮 Prediction Tomorrow:     {preds[last,0]:.4f}")
-        print(f"🔮 Prediction Next 3 Days:  {preds[last,1]:.4f}")
-        print(f"🔮 Prediction Next Week:    {preds[last,2]:.4f}")
+        last = -1
+        for idx, name in enumerate(target_cols):
+            print(f"🔮 Pred {name}: {preds[last, idx]:.4f}   (actual {y_true[last, idx]:.4f})")
 
-    # Backtest logic
-    cash = float(MODEL_PARAMS.get("initial_balance", 10000))
-    shares = 0
-    last_price = 0.0
-    max_loss_per_trade = 0.0
-    profit_target = float(MODEL_PARAMS.get("profit_target", 0.05))
-    trailing_stop = float(MODEL_PARAMS.get("trailing_stop", 0.03))
-    highest_price = None
+    # 7) Trading rules
+    cash              = float(MODEL_PARAMS.get("initial_balance", 10_000))
+    shares            = 0
+    last_price        = 0.0
+    highest_price     = None
+    max_loss_per_trade= 0.0
+
+    profit_target     = MODEL_PARAMS.get("profit_target", 0.05)
+    trailing_stop     = MODEL_PARAMS.get("trailing_stop", 0.03)
+    buy_thr           = MODEL_PARAMS.get("buying_threshold", 0.0)
+    sell_thr          = MODEL_PARAMS.get("selling_threshold", 0.0)
+    fee_per_share     = MODEL_PARAMS.get("buy_sell_fee_per_share", 0.01)
+    min_fee           = MODEL_PARAMS.get("minimum_fee", 1.0)
+    tax_rate          = MODEL_PARAMS.get("tax_rate", 0.25)
+
     trades = []
 
-    for i in range(len(prices) - 1):
-        date = dates[i]
-        price = float(prices[i])
+    for i, date in enumerate(dates[:-1]):
+        price  = float(prices[i])
         signal = preds[i]
-        avg_ret = float(signal.mean())
-        stop_loss = shares > 0 and price < last_price * 0.97
+        avg_ret= float(signal.mean())
+
+        # update trailing high
         if shares > 0:
             highest_price = price if highest_price is None or price > highest_price else highest_price
-        trailing_stop_hit = shares > 0 and highest_price is not None and price < highest_price * (1 - trailing_stop)
-        profit_target_hit = shares > 0 and price >= last_price * (1 + profit_target)
-        fee = float(max(
-            MODEL_PARAMS.get("buy_sell_fee_per_share", 0.01) * shares,
-            MODEL_PARAMS.get("minimum_fee", 1)
-        )) if shares > 0 else 0.0
 
-        # BUY
-        if shares == 0 and avg_ret > MODEL_PARAMS.get("buying_threshold", 0.0) and signal[2] > signal[0]:
-            shares = math.floor((cash - fee) / price)
-            cash -= shares * price + fee
+        # check stops
+        stop_loss_hit    = shares > 0 and price < last_price * (1 - MODEL_PARAMS.get("stop_loss_pct", 0.03))
+        trailing_hit     = shares > 0 and highest_price is not None and price < highest_price * (1 - trailing_stop)
+        profit_hit       = shares > 0 and price >= last_price * (1 + profit_target)
+
+        # compute fee/tax placeholders
+        fee = float(max(fee_per_share * shares, min_fee)) if shares > 0 else 0.0
+
+        # BUY signal
+        if shares == 0 and avg_ret > buy_thr and signal[target_cols.index("Target_Next_Week")] > signal[target_cols.index("Target_Tomorrow")]:
+            shares     = math.floor((cash - fee) / price)
+            cash      -= shares * price + fee
             last_price = price
             highest_price = price
             trades.append({
                 "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
                 "Type": "BUY",
                 "Price": price,
-                "Portfolio": float(cash + shares * price),
-                "Change_%": None,
-                "Tax": None
+                "Portfolio": float(cash + shares * price)
             })
-        # SELL
-        elif shares > 0 and (
-            avg_ret < MODEL_PARAMS.get("selling_threshold", 0.0)
-            or stop_loss
-            or trailing_stop_hit
-            or profit_target_hit
-        ):
-            tax = float(MODEL_PARAMS.get("tax_rate", 0.25) * (price - last_price) * shares)
-            cash += shares * price - fee - tax
-            change_pct = float((price - last_price) / last_price * 100)
+
+        # SELL signal
+        elif shares > 0 and (avg_ret < sell_thr or stop_loss_hit or trailing_hit or profit_hit):
+            tax        = float(tax_rate * (price - last_price) * shares)
+            cash      += shares * price - fee - tax
+            change_pct = (price - last_price) / last_price * 100
             max_loss_per_trade = min(max_loss_per_trade, change_pct)
             trades.append({
                 "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -138,29 +129,27 @@ def backtest_model(request_data: UpdateIndicatorsData, verbose: bool = True) -> 
             shares = 0
             highest_price = None
 
-    # Force final sell
+    # 8) Final close‐out if still holding
     if shares > 0:
-        final_date = dates.iloc[-1] if hasattr(dates, 'iloc') else dates[-1]
-        final_price = float(prices[-1])
-        tax = float(MODEL_PARAMS.get("tax_rate", 0.25) * (final_price - last_price) * shares)
-        cash += shares * final_price - tax
-        change_pct = float((final_price - last_price) / last_price * 100)
+        date  = dates.iloc[-1]
+        price = float(prices[-1])
+        tax   = float(tax_rate * (price - last_price) * shares)
+        cash += shares * price - tax
+        change_pct = (price - last_price) / last_price * 100
         max_loss_per_trade = min(max_loss_per_trade, change_pct)
         trades.append({
-            "Date": final_date.strftime("%Y-%m-%dT%H:%M:%S"),
+            "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
             "Type": "SELL",
-            "Price": final_price,
+            "Price": price,
             "Portfolio": float(cash),
             "Change_%": change_pct,
             "Tax": tax
         })
-        shares = 0
 
-    # Summary metrics
-    ticker_change = float((prices[-1] / prices[0] - 1) * 100)
-    net_profit = float((cash / MODEL_PARAMS.get("initial_balance", 10000) - 1) * 100)
+    # 9) Summary
+    ticker_change = (prices[-1] / prices[0] - 1) * 100
+    net_profit    = (cash / MODEL_PARAMS.get("initial_balance", 10_000) - 1) * 100
 
-    # Print final metrics
     if verbose:
         print(f"📉 Ticker Change: {ticker_change:.2f}%")
         print(f"📈 Portfolio    : {net_profit:.2f}%")
@@ -174,7 +163,9 @@ def backtest_model(request_data: UpdateIndicatorsData, verbose: bool = True) -> 
     }
 
 
-def optimize_signal_params(request_data: UpdateIndicatorsData, param_grid: dict) -> pd.DataFrame:
+def optimize_signal_params(
+    request_data: UpdateIndicatorsData, param_grid: dict
+) -> pd.DataFrame:
     """
     Runs a grid search over signal parameters and returns a DataFrame sorted by net_profit.
 
@@ -182,34 +173,44 @@ def optimize_signal_params(request_data: UpdateIndicatorsData, param_grid: dict)
     """
     results = []
     # Save original params
-    original = {k: MODEL_PARAMS.get(k) for k in [
-        "buying_threshold", "selling_threshold", "profit_target", "trailing_stop"
-    ]}
+    original = {
+        k: MODEL_PARAMS.get(k)
+        for k in [
+            "buying_threshold",
+            "selling_threshold",
+            "profit_target",
+            "trailing_stop",
+        ]
+    }
 
     for bt, st, pt, ts in itertools.product(
         param_grid.get("buying_threshold", [original["buying_threshold"]]),
         param_grid.get("selling_threshold", [original["selling_threshold"]]),
         param_grid.get("profit_target", [original["profit_target"]]),
-        param_grid.get("trailing_stop", [original["trailing_stop"]])
+        param_grid.get("trailing_stop", [original["trailing_stop"]]),
     ):
-        # Override\        
-        MODEL_PARAMS.update({
-            "buying_threshold": bt,
-            "selling_threshold": st,
-            "profit_target": pt,
-            "trailing_stop": ts
-        })
+        # Override\
+        MODEL_PARAMS.update(
+            {
+                "buying_threshold": bt,
+                "selling_threshold": st,
+                "profit_target": pt,
+                "trailing_stop": ts,
+            }
+        )
         res = backtest_model(request_data, verbose=False)
-        results.append({
-            "buying_threshold": bt,
-            "selling_threshold": st,
-            "profit_target": pt,
-            "trailing_stop": ts,
-            "net_profit": res["net_profit"],
-            "ticker_change": res["ticker_change"],
-            "max_loss_per_trade": res["max_loss_per_trade"],
-            "num_trades": len(res["trades_signals"])
-        })
+        results.append(
+            {
+                "buying_threshold": bt,
+                "selling_threshold": st,
+                "profit_target": pt,
+                "trailing_stop": ts,
+                "net_profit": res["net_profit"],
+                "ticker_change": res["ticker_change"],
+                "max_loss_per_trade": res["max_loss_per_trade"],
+                "num_trades": len(res["trades_signals"]),
+            }
+        )
     # restore original
     MODEL_PARAMS.update(original)
 

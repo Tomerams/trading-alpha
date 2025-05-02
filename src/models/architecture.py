@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from pytorch_tcn import TCN
 
+
 class LSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size, output_size=3):
         super().__init__()
@@ -14,12 +15,24 @@ class LSTMModel(nn.Module):
         out, _ = self.lstm(x)
         return self.fc(out[:, -1, :])
 
+
 class TransformerModel(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size=3, num_layers=2, nhead=4):
+    def __init__(
+        self,
+        input_size,
+        hidden_size,
+        output_size=3,
+        num_layers=2,
+        nhead=4,
+        dropout: float = 0.0, 
+    ):
         super().__init__()
         self.encoder = nn.Linear(input_size, hidden_size)
         layer = nn.TransformerEncoderLayer(
-            d_model=hidden_size, nhead=nhead, batch_first=True
+            d_model=hidden_size,
+            nhead=nhead,
+            dropout=dropout, 
+            batch_first=True
         )
         self.transformer = nn.TransformerEncoder(layer, num_layers=num_layers)
         self.fc = nn.Linear(hidden_size, output_size)
@@ -31,12 +44,25 @@ class TransformerModel(nn.Module):
         h = self.transformer(h)
         return self.fc(h[:, -1, :])
 
+
 class TransformerRNNModel(nn.Module):
-    def __init__(self, input_size, hidden_size=64, num_layers=1, num_heads=4, output_size=3, dropout=0.1):
+    def __init__(
+        self,
+        input_size,
+        hidden_size=64,
+        num_layers=1,
+        num_heads=4,
+        output_size=3,
+        dropout=0.1,
+    ):
         super().__init__()
         self.embedding = nn.Linear(input_size, hidden_size)
-        self.self_attn = nn.MultiheadAttention(embed_dim=hidden_size, num_heads=num_heads, batch_first=True)
-        layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=num_heads, dropout=dropout)
+        self.self_attn = nn.MultiheadAttention(
+            embed_dim=hidden_size, num_heads=num_heads, batch_first=True
+        )
+        layer = nn.TransformerEncoderLayer(
+            d_model=hidden_size, nhead=num_heads, dropout=dropout
+        )
         self.transformer = nn.TransformerEncoder(layer, num_layers=num_layers)
         self.lstm = nn.LSTM(hidden_size, hidden_size, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
@@ -52,6 +78,7 @@ class TransformerRNNModel(nn.Module):
         h = h.permute(1, 0, 2)
         out, _ = self.lstm(h)
         return self.fc(out[:, -1, :])
+
 
 class CNNLSTMModel(nn.Module):
     def __init__(self, input_size, hidden_size, output_size=3):
@@ -71,15 +98,12 @@ class CNNLSTMModel(nn.Module):
         out, _ = self.lstm(x)
         return self.fc(out[:, -1, :])
 
+
 class TCNModel(nn.Module):
     def __init__(self, input_size, hidden_size, output_size=3):
         super().__init__()
         self.tcn = TCN(
-            input_size,
-            [hidden_size] * 3,
-            kernel_size=3,
-            dropout=0.1,
-            causal=True
+            input_size, [hidden_size] * 3, kernel_size=3, dropout=0.1, causal=True
         )
         self.fc = nn.Linear(hidden_size, output_size)
 
@@ -92,6 +116,7 @@ class TCNModel(nn.Module):
     @property
     def model(self):
         return self
+
 
 class GRUModel(nn.Module):
     def __init__(self, input_size, hidden_size, output_size=3):
@@ -109,21 +134,16 @@ class GRUModel(nn.Module):
     def model(self):
         return self
 
+
 class TransformerTCN(nn.Module):
-    def __init__(self, input_dim, tcn_channels, transformer_dim, n_heads, n_layers, output_dim):
+    def __init__(
+        self, input_dim, tcn_channels, transformer_dim, n_heads, n_layers, output_dim
+    ):
         super().__init__()
-        self.tcn = TCN(
-            input_dim,
-            tcn_channels,
-            kernel_size=3,
-            dropout=0.1,
-            causal=True
-        )
+        self.tcn = TCN(input_dim, tcn_channels, kernel_size=3, dropout=0.1, causal=True)
         self.proj = nn.Linear(tcn_channels[-1], transformer_dim)
         layer = nn.TransformerEncoderLayer(
-            d_model=transformer_dim,
-            nhead=n_heads,
-            batch_first=True
+            d_model=transformer_dim, nhead=n_heads, batch_first=True
         )
         self.transformer = nn.TransformerEncoder(layer, num_layers=n_layers)
         self.head = nn.Linear(transformer_dim, output_dim)
@@ -136,6 +156,7 @@ class TransformerTCN(nn.Module):
         h = self.transformer(h)
         return self.head(h[:, -1, :])
 
+
 class TransformerTCNModel(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
         super().__init__()
@@ -145,7 +166,7 @@ class TransformerTCNModel(nn.Module):
             transformer_dim=hidden_size,
             n_heads=4,
             n_layers=2,
-            output_dim=output_size
+            output_dim=output_size,
         )
 
     def forward(self, x):

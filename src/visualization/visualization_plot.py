@@ -32,16 +32,22 @@ def generate_trade_plot(request_data: UpdateIndicatorsData) -> io.BytesIO:
         ts = pd.to_datetime(trade["Date"])
         price = trade["Price"]
         if trade["Type"] == "BUY":
-            ax.scatter(ts, price, marker="^", color="green", s=100, zorder=5, label="BUY")
+            ax.scatter(
+                ts, price, marker="^", color="green", s=100, zorder=5, label="BUY"
+            )
         else:
-            ax.scatter(ts, price, marker="v", color="red", s=100, zorder=5, label="SELL")
+            ax.scatter(
+                ts, price, marker="v", color="red", s=100, zorder=5, label="SELL"
+            )
 
     # Avoid duplicate legend entries
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), loc="best")
 
-    ax.set_title(f"{request_data.stock_ticker} Trades ({request_data.start_date} → {request_data.end_date})")
+    ax.set_title(
+        f"{request_data.stock_ticker} Trades ({request_data.start_date} → {request_data.end_date})"
+    )
     ax.set_xlabel("Date")
     ax.set_ylabel("Price")
     ax.grid(True)

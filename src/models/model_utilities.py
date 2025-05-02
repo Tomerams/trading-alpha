@@ -17,20 +17,68 @@ from models.architecture import (
 from typing import List, Tuple
 
 
-def get_model(input_size: int, model_type: str, output_size: int = None):
-    """Initialize and return the selected trading model with fixed input shape."""
-    hidden_size = MODEL_PARAMS["hidden_size"]
+def get_model(
+    input_size: int,
+    model_type: str,
+    output_size: int = None,
+    hidden_size: int = None,
+    num_layers: int = None,
+    dropout: float = None,
+):
+    """
+    Initialize and return the selected trading model, merging in
+    any overrides (hidden_size, num_layers, dropout) from tuning.
+    """
+    # 1) determine output size
     if output_size is None:
-        output_size = MODEL_PARAMS["output_size"]
+        output_size = MODEL_PARAMS.get("output_size", 3)
 
+    # 2) merge hyperparam overrides with MODEL_PARAMS defaults
+    hs = hidden_size or MODEL_PARAMS.get("hidden_size", 64)
+    nl = num_layers  or MODEL_PARAMS.get("num_layers", 1)
+    dr = dropout     or MODEL_PARAMS.get("dropout", 0.0)
+
+    # 3) build the selected model
     model_map = {
-        "LSTM": LSTMModel(input_size, hidden_size, output_size),
-        "Transformer": TransformerModel(input_size, hidden_size, output_size),
-        "TransformerRNN": TransformerRNNModel(input_size, hidden_size, output_size),
-        "CNNLSTM": CNNLSTMModel(input_size, hidden_size, output_size),
-        "GRU": GRUModel(input_size, hidden_size, output_size).model,
-        "TCN": TCNModel(input_size, hidden_size, output_size).model,
-        "TransformerTCN": TransformerTCNModel(input_size, hidden_size, output_size),
+        "LSTM": LSTMModel(
+            input_size=input_size,
+            hidden_size=hs,
+            output_size=output_size,
+        ),
+        "Transformer": TransformerModel(
+            input_size=input_size,
+            hidden_size=hs,
+            output_size=output_size,
+            num_layers=nl,
+            dropout=dr,
+        ),
+        "TransformerRNN": TransformerRNNModel(
+            input_size=input_size,
+            hidden_size=hs,
+            output_size=output_size,
+            num_layers=nl,
+            dropout=dr,
+        ),
+        "CNNLSTM": CNNLSTMModel(
+            input_size=input_size,
+            hidden_size=hs,
+            output_size=output_size,
+        ),
+        "GRU": GRUModel(
+            input_size=input_size,
+            hidden_size=hs,
+            output_size=output_size,
+        ).model,
+        "TCN": TCNModel(
+            input_size=input_size,
+            hidden_size=hs,
+            output_size=output_size,
+        ).model,
+        "TransformerTCN": TransformerTCNModel(
+            input_size=input_size,
+            hidden_size=hs,
+            output_size=output_size,
+        ),
     }
 
     if model_type not in model_map:
@@ -38,7 +86,7 @@ def get_model(input_size: int, model_type: str, output_size: int = None):
 
     model = model_map[model_type]
 
-    # Force explicit model building for Keras-like models
+    # 4) for any Keras-like wrappers, force build
     if hasattr(model, "model"):
         model.model.build((None, None, input_size))
 

@@ -115,7 +115,6 @@ FEATURE_COLUMNS = [
 MODEL_PARAMS = {
     "hidden_size": 64,
     "output_size": 3,
-
     # Model architecture
     "hidden_size": 64,
     "seq_len": 20,
@@ -123,7 +122,6 @@ MODEL_PARAMS = {
     "learning_rate": 1e-3,
     "epochs": 10,
     "model_type": "TransformerTCN",
-
     # Backtest parameters
     "initial_balance": 10000,
     "buy_sell_fee_per_share": 0.01,
@@ -131,17 +129,14 @@ MODEL_PARAMS = {
     "tax_rate": 0.25,
     "buying_threshold": 0.0,
     "selling_threshold": 0.005,
-
     # Signal exit params (defaults)
-    "profit_target": 0.1,      # 5% profit target
-    "trailing_stop": 0.03,      # 3% trailing stop
-
+    "profit_target": 0.1,  # 5% profit target
+    "trailing_stop": 0.03,  # 3% trailing stop
     # Grids for /optimize-signals endpoint
-    "grid_buying_threshold":  [0.0, 0.01, 0.02, 0.05],
+    "grid_buying_threshold": [0.0, 0.01, 0.02, 0.05],
     "grid_selling_threshold": [0.0, 0.005, 0.01, 0.02],
-    "grid_profit_target":     [0.02, 0.05, 0.1],
-    "grid_trailing_stop":     [0.02, 0.03, 0.05],
-
+    "grid_profit_target": [0.02, 0.05, 0.1],
+    "grid_trailing_stop": [0.02, 0.03, 0.05],
     # Other hyperparameters
     "weight_decay": 1e-4,
     "val_ratio": 0.2,
@@ -150,7 +145,37 @@ MODEL_PARAMS = {
     "min_lr": 1e-6,
     "early_stopping_patience": 10,
     "target_type": "log",
+    "target_cols": [
+        "Target_Tomorrow",
+        "Target_3_Days",
+        "Target_Next_Week",
+        "NextLocalMaxPct",
+        "NextLocalMinPct",
+        "TrendDirection",
+    ],
+    "shift_targets": [
+        {"name": "Tomorrow",   "shift": -1},
+        {"name": "3_Days",     "shift": -3},
+        {"name": "Next_Week",  "shift": -5},
+    ],
+    "extrema_window": 10,
+    "trend_ema_short": 10,
+    "trend_ema_long": 30,
+
+
+
 }
+
+
+
+OPTUNA_PARAMS = {
+    "n_trials": 50,
+    "timeout_seconds": 3600,
+    "max_epochs": 100,
+    "batch_size": 64,
+    "early_stopping_patience": 5,
+}
+
 
 BACKTEST_PARAMS = {
     "initial_balance": 10000,

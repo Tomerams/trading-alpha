@@ -1,10 +1,11 @@
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 import logging
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from config import MODEL_PARAMS
+from config import MODEL_PARAMS, OPTUNA_PARAMS
 from data import data_processing
+from model_improvments.tuning import run_optuna
 from models import trainer, backtester
 from routers.routers_entities import UpdateIndicatorsData
 from visualization.visualization_plot import generate_trade_plot
@@ -82,3 +83,30 @@ async def plot_trades(request_data: UpdateIndicatorsData):
     except Exception as e:
         logging.exception("Error generating trade plot")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tune-hparams", summary="Run hyperparameter optimization")
+async def tune_hyperparams(
+    request_data: UpdateIndicatorsData, background_tasks: BackgroundTasks
+):
+    """
+    Launch Optuna sweep in the background and return immediately.
+    """
+    # schedule the long-running job
+    background_tasks.add_task(run_optuna, request_data)
+    return JSONResponse(
+        {"status": "started", "n_trials": OPTUNA_PARAMS["n_trials"]}, status_code=202
+    )
+
+
+@router.get("/tune-hparams/result", summary="Get last tuning results")
+def get_tuning_result():
+    """
+    Load the persisted study and return best params + value.
+    """
+    import joblib
+
+    study = joblib.load("files/models/optuna_study.pkl")
+    return JSONResponse(
+        {"best_params": study.best_params, "best_value": study.best_value}
+    )
