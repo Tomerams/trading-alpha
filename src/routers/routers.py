@@ -12,7 +12,7 @@ from visualization.visualization_plot import generate_trade_plot
 router = APIRouter(prefix="", tags=["Booking Items"])
 
 
-@router.post("/indicator_data")
+@router.post("/indicators", summary="Fetch computed indicator data for an asset")
 async def get_data(request_data: UpdateIndicatorsData):
     try:
         response = data_processing.get_data(request_data)
@@ -24,7 +24,7 @@ async def get_data(request_data: UpdateIndicatorsData):
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-@router.post("/train-model")
+@router.post("/train", summary="Train a forecasting model on historical data")
 async def train_model(request_data: UpdateIndicatorsData):
     try:
         response = trainer.train_single(request_data)
