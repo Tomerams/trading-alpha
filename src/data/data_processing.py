@@ -8,14 +8,6 @@ from routers.routers_entities import UpdateIndicatorsData
 from data.data_utilities import get_exclude_from_scaling
 
 
-import numpy as np
-import pandas as pd
-import yfinance as yf
-from config import MODEL_PARAMS
-from data.features import calculate_features
-from data.data_utilities import get_exclude_from_scaling
-
-
 def get_data(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     # 1) Download and basic clean
     df = yf.download(

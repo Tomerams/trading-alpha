@@ -1,5 +1,5 @@
 from config import MODEL_PARAMS
-from models.backtester import backtest_model
+from backtest.backtester import backtest_model
 from routers.routers_entities import UpdateIndicatorsData
 import pandas as pd
 import itertools

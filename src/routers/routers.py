@@ -3,11 +3,12 @@ import logging
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from backtest import backtester
 from config import MODEL_PARAMS, OPTUNA_PARAMS
 from data import data_processing
-from model_improvments import backtest_tuning
-from model_improvments.tuning import run_optuna
-from models import trainer, backtester
+from backtest import backtest_tuning
+from models.model_tuning import run_optuna
+from models import model_trainer
 from routers.routers_entities import UpdateIndicatorsData
 from visualization.visualization_plot import generate_trade_plot
 
@@ -29,7 +30,7 @@ async def get_data(request_data: UpdateIndicatorsData):
 @router.post("/train", summary="Train a forecasting model on historical data")
 async def train_model(request_data: UpdateIndicatorsData):
     try:
-        response = trainer.train_single(request_data)
+        response = model_trainer.train_single(request_data)
 
         return JSONResponse(response.to_dict(orient="records"), status_code=200)
 
@@ -111,3 +112,15 @@ def get_tuning_result():
     return JSONResponse(
         {"best_params": study.best_params, "best_value": study.best_value}
     )
+
+@router.post("/meta-train", summary="Train the meta-model (decision AI) based on model predictions")
+async def meta_train_ai(request_data: UpdateIndicatorsData):
+    try:
+
+        train_meta_model_from_request(request_data)
+
+        return JSONResponse({"status": "Meta model trained successfully."}, status_code=200)
+
+    except Exception as err:
+        logging.exception(err)
+        raise HTTPException(status_code=500, detail="Meta model training failed.")

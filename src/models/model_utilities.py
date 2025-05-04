@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 from config import MODEL_PARAMS
-from models.architecture import (
+from models.model_architecture import (
     LSTMModel,
     CNNLSTMModel,
     TCNModel,

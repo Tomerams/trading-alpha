@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 from routers.routers_entities import UpdateIndicatorsData
 from data.data_processing import get_data
-from models.backtester import backtest_model
+from backtest.backtester import backtest_model
 
 
 def generate_trade_plot(request_data: UpdateIndicatorsData) -> io.BytesIO:
