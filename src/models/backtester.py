@@ -1,57 +1,80 @@
-import logging
 import math
-import itertools
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.metrics import precision_score, recall_score, mean_absolute_error
-
+import joblib
+import lightgbm as lgb
 from routers.routers_entities import UpdateIndicatorsData
 from data.data_processing import get_data
 from models.model_utilities import load_model
 from config import MODEL_PARAMS
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+
+def _train_gbm_on_preds(preds: np.ndarray, true_vals: np.ndarray, target_cols: list):
+    """
+    Train a GBM classifier on the neural-network predictions (stacking).
+    preds: array of shape (n_samples, n_targets)
+    true_vals: array of true shift_targets (e.g. actual returns)
+    target_cols: names of preds columns
+    """
+    # assemble DataFrame
+    df_signals = pd.DataFrame(preds, columns=target_cols)
+    # binary label: 1 if actual next-day return > 0, else 0
+    df_signals["label"] = (
+        true_vals[:, target_cols.index("Target_Tomorrow")] > 0
+    ).astype(int)
+    gbm = lgb.LGBMClassifier(**MODEL_PARAMS["gbm_params"])
+    gbm.fit(df_signals[target_cols], df_signals["label"])
+    joblib.dump(gbm, "files/models/gbm_signal_model.pkl")
+    return gbm
+
+
+def _load_gbm():
+    try:
+        return joblib.load("files/models/gbm_signal_model.pkl")
+    except FileNotFoundError:
+        return None
 
 
 def backtest_model(request_data: UpdateIndicatorsData, verbose: bool = True) -> dict:
-    # 1) Load model + scaler + the exact feature list used in training
-    ticker      = request_data.stock_ticker
-    model_type  = MODEL_PARAMS.get("model_type", "LSTM")
+    # 1) load model and artifacts
+    ticker = request_data.stock_ticker
+    model_type = MODEL_PARAMS["model_type"]
     model, scaler, feature_cols = load_model(ticker, model_type)
-    seq_len     = MODEL_PARAMS.get("seq_len", 10)
-    target_cols = MODEL_PARAMS.get("target_cols", [])
+    seq_len = MODEL_PARAMS["seq_len"]
+    target_cols = MODEL_PARAMS["target_cols"]
 
-    # 2) Fetch enriched data (this now already includes shift-targets, extrema, trend, etc.)
+    # 2) fetch data
     df = get_data(request_data)
-    df["Date"]  = pd.to_datetime(df["Date"])
-    df["Close"] = pd.to_numeric(df["Close"])
+    df["Date"] = pd.to_datetime(df["Date"])
     df.dropna(inplace=True)
 
-    # 3) Build your input matrix X and align dates/prices/true-Y
+    # 3) prepare input sequences
     if seq_len > 1:
-        X      = np.stack([df[feature_cols].iloc[i : i + seq_len].values
-                           for i in range(len(df) - seq_len)])
-        dates  = df["Date"].iloc[seq_len:].reset_index(drop=True)
+        X = np.stack(
+            [
+                df[feature_cols].iloc[i : i + seq_len].values
+                for i in range(len(df) - seq_len)
+            ]
+        )
+        dates = df["Date"].iloc[seq_len:].reset_index(drop=True)
         prices = df["Close"].iloc[seq_len:].values
-        y_true = df[target_cols].iloc[seq_len:].values
+        true_vals = df[target_cols].iloc[seq_len:].values
     else:
-        X      = df[feature_cols].values
-        dates  = df["Date"].reset_index(drop=True)
+        X = df[feature_cols].values
+        dates = df["Date"].reset_index(drop=True)
         prices = df["Close"].values
-        y_true = df[target_cols].values
+        true_vals = df[target_cols].values
 
-    # 4) Scale with the exact same scaler you saved
+    # 4) scale
     if seq_len > 1:
-        n_feat   = X.shape[2]
-        X_flat   = X.reshape(-1, n_feat)
+        n_feat = X.shape[2]
+        X_flat = X.reshape(-1, n_feat)
         X_scaled = scaler.transform(X_flat).reshape(X.shape)
     else:
         X_scaled = scaler.transform(X)
 
-    # 5) Predict
+    # 5) neural predictions
     model.eval()
     with torch.no_grad():
         X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
@@ -59,160 +82,115 @@ def backtest_model(request_data: UpdateIndicatorsData, verbose: bool = True) -> 
             X_tensor = X_tensor.unsqueeze(1)
         preds = model(X_tensor).cpu().numpy()
 
-    # 6) (Optional) print last-bar predictions
-    if verbose:
-        last = -1
-        for idx, name in enumerate(target_cols):
-            print(f"🔮 Pred {name}: {preds[last, idx]:.4f}   (actual {y_true[last, idx]:.4f})")
+    # 6) optional GBM stacking on preds
+    gbm = None
+    if MODEL_PARAMS["use_gbm_signals"]:
+        gbm = _load_gbm() or _train_gbm_on_preds(preds, true_vals, target_cols)
+        gbm_probs = gbm.predict_proba(pd.DataFrame(preds, columns=target_cols))[:, 1]
 
-    # 7) Trading rules
-    cash              = float(MODEL_PARAMS.get("initial_balance", 10_000))
-    shares            = 0
-    last_price        = 0.0
-    highest_price     = None
-    max_loss_per_trade= 0.0
-
-    profit_target     = MODEL_PARAMS.get("profit_target", 0.05)
-    trailing_stop     = MODEL_PARAMS.get("trailing_stop", 0.03)
-    buy_thr           = MODEL_PARAMS.get("buying_threshold", 0.0)
-    sell_thr          = MODEL_PARAMS.get("selling_threshold", 0.0)
-    fee_per_share     = MODEL_PARAMS.get("buy_sell_fee_per_share", 0.01)
-    min_fee           = MODEL_PARAMS.get("minimum_fee", 1.0)
-    tax_rate          = MODEL_PARAMS.get("tax_rate", 0.25)
-
+    # 7) backtest loop
+    cash = MODEL_PARAMS["initial_balance"]
+    shares = 0
+    last_price = 0.0
+    highest_price = None
+    max_loss = 0.0
     trades = []
 
+    # thresholds
+    buy_thr = (
+        MODEL_PARAMS["gbm_buy_threshold"]
+        if MODEL_PARAMS["use_gbm_signals"]
+        else MODEL_PARAMS["buying_threshold"]
+    )
+    sell_thr = (
+        MODEL_PARAMS["gbm_sell_threshold"]
+        if MODEL_PARAMS["use_gbm_signals"]
+        else MODEL_PARAMS["selling_threshold"]
+    )
+    profit_tgt = MODEL_PARAMS["profit_target"]
+    trail_stop = MODEL_PARAMS["trailing_stop"]
+    stop_pct = MODEL_PARAMS["stop_loss_pct"]
+    fee_share = MODEL_PARAMS["buy_sell_fee_per_share"]
+    min_fee = MODEL_PARAMS["minimum_fee"]
+    tax_rate = MODEL_PARAMS["tax_rate"]
+
     for i, date in enumerate(dates[:-1]):
-        price  = float(prices[i])
+        price = float(prices[i])
         signal = preds[i]
-        avg_ret= float(signal.mean())
+        avg_ret = float(gbm_probs[i] if gbm else signal.mean())
 
-        # update trailing high
-        if shares > 0:
-            highest_price = price if highest_price is None or price > highest_price else highest_price
+        if shares:
+            highest_price = max(highest_price, price)
 
-        # check stops
-        stop_loss_hit    = shares > 0 and price < last_price * (1 - MODEL_PARAMS.get("stop_loss_pct", 0.03))
-        trailing_hit     = shares > 0 and highest_price is not None and price < highest_price * (1 - trailing_stop)
-        profit_hit       = shares > 0 and price >= last_price * (1 + profit_target)
+        stop_hit = shares and price < last_price * (1 - stop_pct)
+        trail_hit = shares and price < highest_price * (1 - trail_stop)
+        profit_hit = shares and price >= last_price * (1 + profit_tgt)
 
-        # compute fee/tax placeholders
-        fee = float(max(fee_per_share * shares, min_fee)) if shares > 0 else 0.0
+        fee = max(shares * fee_share, min_fee) if shares else 0.0
 
-        # BUY signal
-        if shares == 0 and avg_ret > buy_thr and signal[target_cols.index("Target_Next_Week")] > signal[target_cols.index("Target_Tomorrow")]:
-            shares     = math.floor((cash - fee) / price)
-            cash      -= shares * price + fee
+        # BUY
+        if not shares and avg_ret > buy_thr:
+            shares = math.floor((cash - fee) / price)
+            cash -= shares * price + fee
             last_price = price
             highest_price = price
-            trades.append({
-                "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
-                "Type": "BUY",
-                "Price": price,
-                "Portfolio": float(cash + shares * price)
-            })
+            trades.append(
+                {
+                    "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "Type": "BUY",
+                    "Price": price,
+                    "Portfolio": cash + shares * price,
+                }
+            )
 
-        # SELL signal
-        elif shares > 0 and (avg_ret < sell_thr or stop_loss_hit or trailing_hit or profit_hit):
-            tax        = float(tax_rate * (price - last_price) * shares)
-            cash      += shares * price - fee - tax
+        # SELL
+        elif shares and avg_ret < sell_thr or stop_hit or trail_hit or profit_hit:
+            tax = tax_rate * (price - last_price) * shares
+            cash += shares * price - fee - tax
             change_pct = (price - last_price) / last_price * 100
-            max_loss_per_trade = min(max_loss_per_trade, change_pct)
-            trades.append({
-                "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
-                "Type": "SELL",
-                "Price": price,
-                "Portfolio": float(cash),
-                "Change_%": change_pct,
-                "Tax": tax
-            })
+            max_loss = min(max_loss, change_pct)
+            trades.append(
+                {
+                    "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "Type": "SELL",
+                    "Price": price,
+                    "Portfolio": cash,
+                    "Change_%": change_pct,
+                    "Tax": tax,
+                }
+            )
             shares = 0
             highest_price = None
 
-    # 8) Final close‐out if still holding
-    if shares > 0:
-        date  = dates.iloc[-1]
+    # final exit
+    if shares:
         price = float(prices[-1])
-        tax   = float(tax_rate * (price - last_price) * shares)
+        tax = tax_rate * (price - last_price) * shares
         cash += shares * price - tax
         change_pct = (price - last_price) / last_price * 100
-        max_loss_per_trade = min(max_loss_per_trade, change_pct)
-        trades.append({
-            "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
-            "Type": "SELL",
-            "Price": price,
-            "Portfolio": float(cash),
-            "Change_%": change_pct,
-            "Tax": tax
-        })
+        max_loss = min(max_loss, change_pct)
+        trades.append(
+            {
+                "Date": dates.iloc[-1].strftime("%Y-%m-%dT%H:%M:%S"),
+                "Type": "SELL",
+                "Price": price,
+                "Portfolio": cash,
+                "Change_%": change_pct,
+                "Tax": tax,
+            }
+        )
 
-    # 9) Summary
-    ticker_change = (prices[-1] / prices[0] - 1) * 100
-    net_profit    = (cash / MODEL_PARAMS.get("initial_balance", 10_000) - 1) * 100
+    ticker_ret = (prices[-1] / prices[0] - 1) * 100
+    net_ret = (cash / MODEL_PARAMS["initial_balance"] - 1) * 100
 
     if verbose:
-        print(f"📉 Ticker Change: {ticker_change:.2f}%")
-        print(f"📈 Portfolio    : {net_profit:.2f}%")
-        print(f"⚠️ Max Loss     : {max_loss_per_trade:.2f}%")
+        print(
+            f"📉 Ticker: {ticker_ret:.2f}%  📈 Port: {net_ret:.2f}%  ⚠️ Max Loss: {max_loss:.2f}%"
+        )
 
     return {
-        "net_profit": net_profit,
-        "ticker_change": ticker_change,
-        "max_loss_per_trade": max_loss_per_trade,
-        "trades_signals": trades
+        "ticker_change": ticker_ret,
+        "net_profit": net_ret,
+        "max_loss_per_trade": max_loss,
+        "trades_signals": trades,
     }
-
-
-def optimize_signal_params(
-    request_data: UpdateIndicatorsData, param_grid: dict
-) -> pd.DataFrame:
-    """
-    Runs a grid search over signal parameters and returns a DataFrame sorted by net_profit.
-
-    param_grid keys: buying_threshold, selling_threshold, profit_target, trailing_stop
-    """
-    results = []
-    # Save original params
-    original = {
-        k: MODEL_PARAMS.get(k)
-        for k in [
-            "buying_threshold",
-            "selling_threshold",
-            "profit_target",
-            "trailing_stop",
-        ]
-    }
-
-    for bt, st, pt, ts in itertools.product(
-        param_grid.get("buying_threshold", [original["buying_threshold"]]),
-        param_grid.get("selling_threshold", [original["selling_threshold"]]),
-        param_grid.get("profit_target", [original["profit_target"]]),
-        param_grid.get("trailing_stop", [original["trailing_stop"]]),
-    ):
-        # Override\
-        MODEL_PARAMS.update(
-            {
-                "buying_threshold": bt,
-                "selling_threshold": st,
-                "profit_target": pt,
-                "trailing_stop": ts,
-            }
-        )
-        res = backtest_model(request_data, verbose=False)
-        results.append(
-            {
-                "buying_threshold": bt,
-                "selling_threshold": st,
-                "profit_target": pt,
-                "trailing_stop": ts,
-                "net_profit": res["net_profit"],
-                "ticker_change": res["ticker_change"],
-                "max_loss_per_trade": res["max_loss_per_trade"],
-                "num_trades": len(res["trades_signals"]),
-            }
-        )
-    # restore original
-    MODEL_PARAMS.update(original)
-
-    df = pd.DataFrame(results)
-    return df.sort_values("net_profit", ascending=False).reset_index(drop=True)

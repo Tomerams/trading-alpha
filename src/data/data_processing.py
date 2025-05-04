@@ -27,7 +27,7 @@ def get_data(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     if df.empty:
         raise ValueError(f"No data for {request_data.stock_ticker}")
 
-    df = df.rename_axis('Date').reset_index()
+    df = df.rename_axis("Date").reset_index()
     df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
     df = calculate_features(df)
 
@@ -39,13 +39,15 @@ def get_data(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     # 3) Extrema-based targets
     window = MODEL_PARAMS.get("extrema_window", 10)
     highs = df["Close"].rolling(window).max().shift(-window)
-    lows  = df["Close"].rolling(window).min().shift(-window)
+    lows = df["Close"].rolling(window).min().shift(-window)
     df["NextLocalMaxPct"] = (highs - df["Close"]) / df["Close"]
-    df["NextLocalMinPct"] = (lows  - df["Close"]) / df["Close"]
+    df["NextLocalMinPct"] = (lows - df["Close"]) / df["Close"]
 
     # 4) Trend direction
-    short_ema = df["Close"].ewm(span=MODEL_PARAMS["trend_ema_short"], adjust=False).mean()
-    long_ema  = df["Close"].ewm(span=MODEL_PARAMS["trend_ema_long"], adjust=False).mean()
+    short_ema = (
+        df["Close"].ewm(span=MODEL_PARAMS["trend_ema_short"], adjust=False).mean()
+    )
+    long_ema = df["Close"].ewm(span=MODEL_PARAMS["trend_ema_long"], adjust=False).mean()
     df["TrendDirection"] = 0
     df.loc[short_ema > long_ema, "TrendDirection"] = 1
     df.loc[short_ema < long_ema, "TrendDirection"] = -1

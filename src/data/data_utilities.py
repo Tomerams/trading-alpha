@@ -1,6 +1,10 @@
-import numpy as np
 from config import MODEL_PARAMS
-from data.features import Pattern, ExternalDerivedFeatures, BinaryIndicator, DateFeatures
+from data.features import (
+    Pattern,
+    ExternalDerivedFeatures,
+    BinaryIndicator,
+    DateFeatures,
+)
 
 
 def get_exclude_from_scaling() -> set:
@@ -23,4 +27,6 @@ def get_exclude_from_scaling() -> set:
     # date-related features
     datefeature_cols = [d.value for d in DateFeatures]
 
-    return set(base + targets + pattern_cols + external_cols + binary_cols + datefeature_cols)
+    return set(
+        base + targets + pattern_cols + external_cols + binary_cols + datefeature_cols
+    )

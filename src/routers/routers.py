@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from config import MODEL_PARAMS, OPTUNA_PARAMS
 from data import data_processing
+from model_improvments import backtest_tuning
 from model_improvments.tuning import run_optuna
 from models import trainer, backtester
 from routers.routers_entities import UpdateIndicatorsData
@@ -64,7 +65,7 @@ async def optimize_signals(request_data: UpdateIndicatorsData):
             "profit_target": MODEL_PARAMS.get("grid_profit_target"),
             "trailing_stop": MODEL_PARAMS.get("grid_trailing_stop"),
         }
-        df = backtester.optimize_signal_params(request_data, param_grid)
+        df = backtest_tuning.optimize_signal_params(request_data, param_grid)
         # ensure DataFrame to JSON
         return JSONResponse(df.to_dict(orient="records"), status_code=200)
     except Exception as err:

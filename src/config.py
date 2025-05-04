@@ -116,7 +116,6 @@ MODEL_PARAMS = {
     "hidden_size": 64,
     "output_size": 3,
     # Model architecture
-    "hidden_size": 64,
     "seq_len": 20,
     "batch_size": 32,
     "learning_rate": 1e-3,
@@ -127,11 +126,11 @@ MODEL_PARAMS = {
     "buy_sell_fee_per_share": 0.01,
     "minimum_fee": 1,
     "tax_rate": 0.25,
-    "buying_threshold": 0.0,
+    "buying_threshold": 0.05,
     "selling_threshold": 0.005,
-    # Signal exit params (defaults)
-    "profit_target": 0.1,  # 5% profit target
-    "trailing_stop": 0.03,  # 3% trailing stop
+    "profit_target": 0.05,
+    "trailing_stop": 0.03,
+    "stop_loss_pct": 0.03,
     # Grids for /optimize-signals endpoint
     "grid_buying_threshold": [0.0, 0.01, 0.02, 0.05],
     "grid_selling_threshold": [0.0, 0.005, 0.01, 0.02],
@@ -145,6 +144,7 @@ MODEL_PARAMS = {
     "min_lr": 1e-6,
     "early_stopping_patience": 10,
     "target_type": "log",
+    # dynamic targets
     "target_cols": [
         "Target_Tomorrow",
         "Target_3_Days",
@@ -154,18 +154,19 @@ MODEL_PARAMS = {
         "TrendDirection",
     ],
     "shift_targets": [
-        {"name": "Tomorrow",   "shift": -1},
-        {"name": "3_Days",     "shift": -3},
-        {"name": "Next_Week",  "shift": -5},
+        {"name": "Tomorrow", "shift": -1},
+        {"name": "3_Days", "shift": -3},
+        {"name": "Next_Week", "shift": -5},
     ],
     "extrema_window": 10,
     "trend_ema_short": 10,
     "trend_ema_long": 30,
-
-
-
+    # GBM signal model flags & thresholds
+    "use_gbm_signals": False,
+    "gbm_buy_threshold": 0.6,
+    "gbm_sell_threshold": 0.4,
+    "gbm_params": {"n_estimators": 100, "max_depth": 3, "learning_rate": 0.1},
 }
-
 
 
 OPTUNA_PARAMS = {

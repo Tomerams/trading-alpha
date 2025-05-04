@@ -28,7 +28,9 @@ def train_single(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     model_type = MODEL_PARAMS.get("model_type", "LSTM")
     model_path = f"files/models/{request_data.stock_ticker}_{model_type}.pt"
     scaler_path = f"files/models/{request_data.stock_ticker}_{model_type}_scaler.pkl"
-    features_path = f"files/models/{request_data.stock_ticker}_{model_type}_features.pkl"
+    features_path = (
+        f"files/models/{request_data.stock_ticker}_{model_type}_features.pkl"
+    )
 
     # 1) Load enriched data
     df = get_data(request_data)
@@ -46,41 +48,54 @@ def train_single(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     # 4) Sequence generation
     seq_len = MODEL_PARAMS.get("seq_len", 10)
     X_train, y_train = create_sequences(train_df, feature_cols, target_cols, seq_len)
-    X_val,   y_val   = create_sequences(val_df,   feature_cols, target_cols, seq_len)
-    X_test,  y_test  = create_sequences(test_df,  feature_cols, target_cols, seq_len)
+    X_val, y_val = create_sequences(val_df, feature_cols, target_cols, seq_len)
+    X_test, y_test = create_sequences(test_df, feature_cols, target_cols, seq_len)
 
     # 5) Feature scaling
     scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train.reshape(-1, X_train.shape[-1])).reshape(X_train.shape)
-    X_val   = scaler.transform(X_val.reshape(-1, X_val.shape[-1])).reshape(X_val.shape)
-    X_test  = scaler.transform(X_test.reshape(-1, X_test.shape[-1])).reshape(X_test.shape)
+    X_train = scaler.fit_transform(X_train.reshape(-1, X_train.shape[-1])).reshape(
+        X_train.shape
+    )
+    X_val = scaler.transform(X_val.reshape(-1, X_val.shape[-1])).reshape(X_val.shape)
+    X_test = scaler.transform(X_test.reshape(-1, X_test.shape[-1])).reshape(
+        X_test.shape
+    )
 
     # 6) DataLoaders
     batch_size = MODEL_PARAMS.get("batch_size", 32)
     train_loader = DataLoader(
-        TensorDataset(torch.from_numpy(X_train).float(), torch.from_numpy(y_train).float()),
-        batch_size=batch_size, shuffle=False
+        TensorDataset(
+            torch.from_numpy(X_train).float(), torch.from_numpy(y_train).float()
+        ),
+        batch_size=batch_size,
+        shuffle=False,
     )
     val_loader = DataLoader(
         TensorDataset(torch.from_numpy(X_val).float(), torch.from_numpy(y_val).float()),
-        batch_size=batch_size, shuffle=False
+        batch_size=batch_size,
+        shuffle=False,
     )
     test_loader = DataLoader(
-        TensorDataset(torch.from_numpy(X_test).float(), torch.from_numpy(y_test).float()),
-        batch_size=batch_size, shuffle=False
+        TensorDataset(
+            torch.from_numpy(X_test).float(), torch.from_numpy(y_test).float()
+        ),
+        batch_size=batch_size,
+        shuffle=False,
     )
 
     # 7) Model, optimizer, loss
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     input_size = X_train.shape[-1]
     model = get_model(input_size, model_type, output_size=len(target_cols)).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=MODEL_PARAMS.get("learning_rate", 1e-3))
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=MODEL_PARAMS.get("learning_rate", 1e-3)
+    )
     criterion = nn.MSELoss()
 
     # 8) Training loop with validation and early stopping
     epochs = MODEL_PARAMS.get("epochs", 20)
     patience = MODEL_PARAMS.get("early_stopping_patience", None)
-    best_val_loss = float('inf')
+    best_val_loss = float("inf")
     epochs_no_improve = 0
 
     for epoch in range(epochs):
@@ -105,7 +120,9 @@ def train_single(request_data: UpdateIndicatorsData) -> pd.DataFrame:
                 val_loss += criterion(model(xb), yb).item()
         val_loss /= len(val_loader)
 
-        logging.info(f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+        logging.info(
+            f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}"
+        )
 
         # Early stopping
         if patience is not None:
@@ -124,7 +141,9 @@ def train_single(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     torch.save(model.state_dict(), model_path)
     joblib.dump(scaler, scaler_path)
     joblib.dump(feature_cols, features_path)
-    logging.info(f"Saved model to {model_path}, scaler to {scaler_path}, features to {features_path}")
+    logging.info(
+        f"Saved model to {model_path}, scaler to {scaler_path}, features to {features_path}"
+    )
 
     # 10) Inference
     model.eval()

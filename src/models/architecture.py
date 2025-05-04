@@ -24,15 +24,12 @@ class TransformerModel(nn.Module):
         output_size=3,
         num_layers=2,
         nhead=4,
-        dropout: float = 0.0, 
+        dropout: float = 0.0,
     ):
         super().__init__()
         self.encoder = nn.Linear(input_size, hidden_size)
         layer = nn.TransformerEncoderLayer(
-            d_model=hidden_size,
-            nhead=nhead,
-            dropout=dropout, 
-            batch_first=True
+            d_model=hidden_size, nhead=nhead, dropout=dropout, batch_first=True
         )
         self.transformer = nn.TransformerEncoder(layer, num_layers=num_layers)
         self.fc = nn.Linear(hidden_size, output_size)

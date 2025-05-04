@@ -11,7 +11,6 @@ from models.architecture import (
     TransformerModel,
     GRUModel,
     TransformerRNNModel,
-    TransformerTCN,
     TransformerTCNModel,
 )
 from typing import List, Tuple
@@ -35,8 +34,8 @@ def get_model(
 
     # 2) merge hyperparam overrides with MODEL_PARAMS defaults
     hs = hidden_size or MODEL_PARAMS.get("hidden_size", 64)
-    nl = num_layers  or MODEL_PARAMS.get("num_layers", 1)
-    dr = dropout     or MODEL_PARAMS.get("dropout", 0.0)
+    nl = num_layers or MODEL_PARAMS.get("num_layers", 1)
+    dr = dropout or MODEL_PARAMS.get("dropout", 0.0)
 
     # 3) build the selected model
     model_map = {
@@ -96,28 +95,29 @@ def get_model(
 def load_model(
     ticker: str, model_type: str
 ) -> Tuple[torch.nn.Module, object, List[str]]:
-    """Load a saved model, scaler, and feature list for backtesting."""
-    model_filename = f"files/models/{ticker}_{model_type}.pt"
-    scaler_filename = f"files/models/{ticker}_{model_type}_scaler.pkl"
-    features_filename = f"files/models/{ticker}_{model_type}_features.pkl"
+    """
+    Load a saved model, scaler, and feature list.
+    Rebuild with head size = len(target_cols).
+    """
+    base = f"files/models/{ticker}_{model_type}"
+    mp = f"{base}.pt"
+    sp = f"{base}_scaler.pkl"
+    fp = f"{base}_features.pkl"
 
-    if not (
-        os.path.exists(model_filename)
-        and os.path.exists(scaler_filename)
-        and os.path.exists(features_filename)
-    ):
-        raise FileNotFoundError(
-            f"Model files for {ticker}-{model_type}  vbnot found. Train the model first."
-        )
+    if not (os.path.exists(mp) and os.path.exists(sp) and os.path.exists(fp)):
+        raise FileNotFoundError(f"Model files for {ticker}-{model_type} not found.")
 
-    checkpoint = torch.load(model_filename, map_location=torch.device("cpu"))
-    scaler = joblib.load(scaler_filename)
-    features = joblib.load(features_filename)
+    checkpoint = torch.load(mp, map_location="cpu")
+    scaler = joblib.load(sp)
+    features = joblib.load(fp)
 
-    model = get_model(input_size=len(features), model_type=model_type)
+    # dynamic head
+    output_size = len(MODEL_PARAMS.get("target_cols", []))
+    model = get_model(
+        input_size=len(features), model_type=model_type, output_size=output_size
+    )
     model.load_state_dict(checkpoint)
     model.eval()
-
     return model, scaler, features
 
 
