@@ -11,24 +11,29 @@ import numpy as np
 
 def backtest_model(request_data, verbose=True):
     ticker = request_data.stock_ticker
-    model_type = MODEL_PARAMS['model_type']
+    model_type = MODEL_PARAMS["model_type"]
     model, scaler, feature_cols = load_model(ticker, model_type)
-    seq_len = MODEL_PARAMS['seq_len']
-    target_cols = MODEL_PARAMS['target_cols']
+    seq_len = MODEL_PARAMS["seq_len"]
+    target_cols = MODEL_PARAMS["target_cols"]
 
     df = get_data(request_data)
-    df['Date'] = pd.to_datetime(df['Date'])
+    df["Date"] = pd.to_datetime(df["Date"])
     df.dropna(inplace=True)
 
     if seq_len > 1:
-        X = np.stack([df[feature_cols].iloc[i:i+seq_len].values for i in range(len(df)-seq_len)])
-        dates = df['Date'].iloc[seq_len:].reset_index(drop=True)
-        prices = df['Close'].iloc[seq_len:].values
+        X = np.stack(
+            [
+                df[feature_cols].iloc[i : i + seq_len].values
+                for i in range(len(df) - seq_len)
+            ]
+        )
+        dates = df["Date"].iloc[seq_len:].reset_index(drop=True)
+        prices = df["Close"].iloc[seq_len:].values
         true_vals = df[target_cols].iloc[seq_len:].values
     else:
         X = df[feature_cols].values
-        dates = df['Date'].reset_index(drop=True)
-        prices = df['Close'].values
+        dates = df["Date"].reset_index(drop=True)
+        prices = df["Close"].values
         true_vals = df[target_cols].values
 
     if seq_len > 1:
@@ -50,19 +55,19 @@ def backtest_model(request_data, verbose=True):
     if meta_model is None:
         raise ValueError("Meta model not found. Please train it first.")
 
-    cash = MODEL_PARAMS['initial_balance']
+    cash = MODEL_PARAMS["initial_balance"]
     shares = 0
     last_price = 0.0
     highest_price = None
     max_loss = 0.0
     trades = []
 
-    stop_pct = MODEL_PARAMS['stop_loss_pct']
-    profit_tgt = MODEL_PARAMS['profit_target']
-    trail_stop = MODEL_PARAMS['trailing_stop']
-    fee_share = MODEL_PARAMS['buy_sell_fee_per_share']
-    min_fee = MODEL_PARAMS['minimum_fee']
-    tax_rate = MODEL_PARAMS['tax_rate']
+    stop_pct = MODEL_PARAMS["stop_loss_pct"]
+    profit_tgt = MODEL_PARAMS["profit_target"]
+    trail_stop = MODEL_PARAMS["trailing_stop"]
+    fee_share = MODEL_PARAMS["buy_sell_fee_per_share"]
+    min_fee = MODEL_PARAMS["minimum_fee"]
+    tax_rate = MODEL_PARAMS["tax_rate"]
 
     for i, date in enumerate(dates[:-1]):
         price = float(prices[i])
@@ -84,7 +89,14 @@ def backtest_model(request_data, verbose=True):
             cash -= shares * price + fee
             last_price = price
             highest_price = price
-            trades.append({'Date': date.strftime('%Y-%m-%dT%H:%M:%S'), 'Type': 'BUY', 'Price': price, 'Portfolio': cash + shares * price})
+            trades.append(
+                {
+                    "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "Type": "BUY",
+                    "Price": price,
+                    "Portfolio": cash + shares * price,
+                }
+            )
 
         # SELL
         elif shares and (action == 0 or stop_hit or trail_hit or profit_hit):
@@ -92,7 +104,16 @@ def backtest_model(request_data, verbose=True):
             cash += shares * price - fee - tax
             change_pct = (price - last_price) / last_price * 100
             max_loss = min(max_loss, change_pct)
-            trades.append({'Date': date.strftime('%Y-%m-%dT%H:%M:%S'), 'Type': 'SELL', 'Price': price, 'Portfolio': cash, 'Change_%': change_pct, 'Tax': tax})
+            trades.append(
+                {
+                    "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "Type": "SELL",
+                    "Price": price,
+                    "Portfolio": cash,
+                    "Change_%": change_pct,
+                    "Tax": tax,
+                }
+            )
             shares = 0
             highest_price = None
 
@@ -102,12 +123,28 @@ def backtest_model(request_data, verbose=True):
         cash += shares * price - tax
         change_pct = (price - last_price) / last_price * 100
         max_loss = min(max_loss, change_pct)
-        trades.append({'Date': dates.iloc[-1].strftime('%Y-%m-%dT%H:%M:%S'), 'Type': 'SELL', 'Price': price, 'Portfolio': cash, 'Change_%': change_pct, 'Tax': tax})
+        trades.append(
+            {
+                "Date": dates.iloc[-1].strftime("%Y-%m-%dT%H:%M:%S"),
+                "Type": "SELL",
+                "Price": price,
+                "Portfolio": cash,
+                "Change_%": change_pct,
+                "Tax": tax,
+            }
+        )
 
     ticker_ret = (prices[-1] / prices[0] - 1) * 100
-    net_ret = (cash / MODEL_PARAMS['initial_balance'] - 1) * 100
+    net_ret = (cash / MODEL_PARAMS["initial_balance"] - 1) * 100
 
     if verbose:
-        print(f'📉 Ticker: {ticker_ret:.2f}%  📈 Portfolio: {net_ret:.2f}%  ⚠️ Max Loss: {max_loss:.2f}%')
+        print(
+            f"📉 Ticker: {ticker_ret:.2f}%  📈 Portfolio: {net_ret:.2f}%  ⚠️ Max Loss: {max_loss:.2f}%"
+        )
 
-    return {'ticker_change': ticker_ret, 'net_profit': net_ret, 'max_loss_per_trade': max_loss, 'trades_signals': trades}
+    return {
+        "ticker_change": ticker_ret,
+        "net_profit": net_ret,
+        "max_loss_per_trade": max_loss,
+        "trades_signals": trades,
+    }

@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from backtest import backtester
+from backtest.meta_model import train_meta_model_from_request
 from config import MODEL_PARAMS, OPTUNA_PARAMS
 from data import data_processing
 from backtest import backtest_tuning
@@ -113,14 +114,14 @@ def get_tuning_result():
         {"best_params": study.best_params, "best_value": study.best_value}
     )
 
-@router.post("/meta-train", summary="Train the meta-model (decision AI) based on model predictions")
+
+@router.post("/meta-train", summary="Train the meta-model (BUY/SELL/HOLD AI)")
 async def meta_train_ai(request_data: UpdateIndicatorsData):
     try:
-
         train_meta_model_from_request(request_data)
-
-        return JSONResponse({"status": "Meta model trained successfully."}, status_code=200)
-
+        return JSONResponse(
+            {"status": "Meta model trained successfully."}, status_code=200
+        )
     except Exception as err:
-        logging.exception(err)
+        logging.exception("Meta model training failed.")
         raise HTTPException(status_code=500, detail="Meta model training failed.")
