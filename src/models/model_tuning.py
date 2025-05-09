@@ -1,4 +1,3 @@
-# tuning.py
 import optuna
 import joblib
 from sklearn.preprocessing import StandardScaler
@@ -9,6 +8,7 @@ import torch.nn as nn
 from config import OPTUNA_PARAMS, MODEL_PARAMS
 from data.data_processing import get_data
 from models.model_utilities import get_model, time_based_split, create_sequences
+from pathlib import Path
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -47,10 +47,16 @@ def _prepare_loaders(request_data, seq_len, batch_size):
 
 def objective(trial, request_data):
     # 1) sample hyperparameters
-    hidden_size = trial.suggest_int("hidden_size", 32, 256)
+    #   – num_heads chosen from allowable set
+    num_heads = trial.suggest_categorical("num_heads", [1, 2, 4, 8])
+
+    #   – hidden_size as multiple of num_heads
+    multiplier = trial.suggest_int("hidden_mult", 1, 8)
+    hidden_size = num_heads * multiplier
+
     num_layers = trial.suggest_int("num_layers", 1, 4)
     dropout_rate = trial.suggest_float("dropout_rate", 0.0, 0.5)
-    lr = trial.suggest_loguniform("learning_rate", 1e-5, 1e-2)
+    lr = trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True)
     seq_len = trial.suggest_int("sequence_length", 5, 30)
 
     # 2) build data loaders
@@ -58,7 +64,7 @@ def objective(trial, request_data):
         request_data, seq_len, OPTUNA_PARAMS["batch_size"]
     )
 
-    # 3) instantiate model
+    # 3) instantiate model (pass num_heads into MODEL_PARAMS or directly to get_model)
     model = get_model(
         input_size=train_loader.dataset.tensors[0].shape[-1],
         model_type=MODEL_PARAMS["model_type"],
@@ -66,6 +72,7 @@ def objective(trial, request_data):
         hidden_size=hidden_size,
         num_layers=num_layers,
         dropout=dropout_rate,
+        num_heads=num_heads,  # חשוב – לוודא ש־get_model תומך בפרמטר הזה
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -104,7 +111,10 @@ def objective(trial, request_data):
 
 def run_optuna(request_data):
     study = optuna.create_study(
-        direction="minimize", pruner=optuna.pruners.MedianPruner()
+        direction="minimize",
+        pruner=optuna.pruners.MedianPruner(
+            n_warmup_steps=OPTUNA_PARAMS["warmup_steps"]
+        ),
     )
     study.optimize(
         lambda t: objective(t, request_data),
@@ -112,5 +122,6 @@ def run_optuna(request_data):
         timeout=OPTUNA_PARAMS["timeout_seconds"],
     )
     # persist for later inspection
+    Path("files/models").mkdir(parents=True, exist_ok=True)
     joblib.dump(study, "files/models/optuna_study.pkl")
     return study
