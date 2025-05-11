@@ -55,3 +55,6 @@ TEST*.xml
 *.flv
 *.wmv
 *.mov
+
+#─── Ignore source files directory ───────────────────────────────────────────
+src/files/
