@@ -5,19 +5,11 @@ import yfinance as yf
 from config import MODEL_PARAMS
 from data.features import calculate_features
 from routers.routers_entities import UpdateIndicatorsData
-from data.data_utilities import get_exclude_from_scaling
+from data.data_utilities import get_data, get_exclude_from_scaling
 
 
-def get_data(request_data: UpdateIndicatorsData) -> pd.DataFrame:
-    # 1) Download and basic clean
-    df = yf.download(
-        request_data.stock_ticker,
-        start=request_data.start_date,
-        end=request_data.end_date,
-        interval="1d",
-    )
-    if df.empty:
-        raise ValueError(f"No data for {request_data.stock_ticker}")
+def get_indicators_data(request_data: UpdateIndicatorsData) -> pd.DataFrame:
+    df = get_data(request_data)
 
     df = df.rename_axis("Date").reset_index()
     df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]

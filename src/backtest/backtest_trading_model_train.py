@@ -7,7 +7,7 @@ import torch
 from lightgbm import LGBMClassifier
 from config import MODEL_PARAMS
 from models.model_utilities import load_model
-from data.data_processing import get_data
+from data.data_processing import get_indicators_data
 
 logging.basicConfig(level=logging.INFO)
 
@@ -20,20 +20,6 @@ def create_meta_ai_dataset(
     buy_threshold: float = None,
     sell_threshold: float = None,
 ) -> pd.DataFrame:
-    """
-    Build a DataFrame of model predictions with corresponding action labels.
-
-    Args:
-        preds: Array of shape (n_samples, n_targets) of model predictions.
-        true_vals: Array of true target values (n_samples, n_targets).
-        prices: Array of prices (n_samples,) corresponding to preds.
-        target_cols: List of target column names matching preds.
-        buy_threshold: Return threshold above which to BUY.
-        sell_threshold: Return threshold below which to SELL.
-
-    Returns:
-        DataFrame with Pred_<target> columns and 'Action' label (0=SELL,1=HOLD,2=BUY).
-    """
     buy_thr = (
         buy_threshold
         if buy_threshold is not None
@@ -61,16 +47,6 @@ def create_meta_ai_dataset(
 
 
 def train_meta_model(meta_df: pd.DataFrame, model_path: str = None) -> LGBMClassifier:
-    """
-    Train and persist a LightGBM classifier on the action labels.
-
-    Args:
-        meta_df: DataFrame returned by create_meta_ai_dataset.
-        model_path: Path where to save the trained model.
-
-    Returns:
-        Trained LightGBMClassifier instance.
-    """
     path = model_path or MODEL_PARAMS.get(
         "meta_model_path", "files/models/meta_action_model.pkl"
     )
@@ -92,15 +68,6 @@ def train_meta_model(meta_df: pd.DataFrame, model_path: str = None) -> LGBMClass
 
 
 def load_meta_model(model_path: str = None) -> LGBMClassifier | None:
-    """
-    Load the persisted meta-model, or return None if not found.
-
-    Args:
-        model_path: Optional path to the model file.
-
-    Returns:
-        Loaded LightGBMClassifier or None.
-    """
     path = model_path or MODEL_PARAMS.get(
         "meta_model_path", "files/models/meta_action_model.pkl"
     )
@@ -114,13 +81,6 @@ def load_meta_model(model_path: str = None) -> LGBMClassifier | None:
 
 
 def train_meta_model_from_request(request_data) -> None:
-    """
-    Orchestrate full meta-model training: fetch data, predict targets, create dataset, train and save model.
-
-    Args:
-        request_data: UpdateIndicatorsData containing stock_ticker, start/end dates, etc.
-    """
-    # Load base neural model and scaler
     model, scaler, feature_cols = load_model(
         request_data.stock_ticker, MODEL_PARAMS["model_type"]
     )
@@ -128,7 +88,7 @@ def train_meta_model_from_request(request_data) -> None:
     target_cols = MODEL_PARAMS["target_cols"]
 
     # Fetch and prepare data
-    df = get_data(request_data)
+    df = get_indicators_data(request_data)
     df["Date"] = pd.to_datetime(df["Date"])
     df.dropna(inplace=True)
 

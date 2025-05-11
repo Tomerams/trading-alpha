@@ -1,22 +1,23 @@
 import pandas as pd
 from backtest.backtest_utilities import decide_action_meta
-from backtest.meta_model import load_meta_model
+from backtest.backtest_trading_model_train import load_meta_model
 from config import MODEL_PARAMS
 import torch
-from data.data_processing import get_data
+from data.data_processing import get_indicators_data
 from models.model_utilities import load_model
 import math
 import numpy as np
 
 
 def backtest_model(request_data, verbose=True):
+    print("backtest_model")
     ticker = request_data.stock_ticker
     model_type = MODEL_PARAMS["model_type"]
     model, scaler, feature_cols = load_model(ticker, model_type)
     seq_len = MODEL_PARAMS["seq_len"]
     target_cols = MODEL_PARAMS["target_cols"]
 
-    df = get_data(request_data)
+    df = get_indicators_data(request_data)
     df["Date"] = pd.to_datetime(df["Date"])
     df.dropna(inplace=True)
 
@@ -68,6 +69,9 @@ def backtest_model(request_data, verbose=True):
     fee_share = MODEL_PARAMS["buy_sell_fee_per_share"]
     min_fee = MODEL_PARAMS["minimum_fee"]
     tax_rate = MODEL_PARAMS["tax_rate"]
+
+    print("IM here!!")
+    print(dates)
 
     for i, date in enumerate(dates[:-1]):
         price = float(prices[i])

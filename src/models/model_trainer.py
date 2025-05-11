@@ -11,7 +11,7 @@ from sklearn.preprocessing import StandardScaler
 
 from config import MODEL_PARAMS
 from routers.routers_entities import UpdateIndicatorsData
-from data.data_processing import get_data
+from data.data_processing import get_indicators_data
 from data.data_utilities import get_exclude_from_scaling
 from models.model_utilities import get_model, time_based_split, create_sequences
 
@@ -33,7 +33,7 @@ def train_single(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     )
 
     # 1) Load enriched data
-    df = get_data(request_data)
+    df = get_indicators_data(request_data)
     df["Date"] = pd.to_datetime(df["Date"])
 
     # 2) Define targets and features

@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 
 from config import OPTUNA_PARAMS, MODEL_PARAMS
-from data.data_processing import get_data
+from data.data_processing import get_indicators_data
 from models.model_utilities import get_model, time_based_split, create_sequences
 from pathlib import Path
 
@@ -14,7 +14,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def _prepare_loaders(request_data, seq_len, batch_size):
-    df = get_data(request_data)
+    df = get_indicators_data(request_data)
     train_df, val_df, _ = time_based_split(df)
     feature_cols = [
         c

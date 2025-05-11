@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from routers.routers_entities import UpdateIndicatorsData
-from data.data_processing import get_data
+from data.data_processing import get_indicators_data
 from backtest.backtester import backtest_model
 
 
@@ -17,7 +17,7 @@ def generate_trade_plot(request_data: UpdateIndicatorsData) -> io.BytesIO:
     trades = result.get("trades_signals", [])
 
     # 2. Fetch historical price data
-    df = get_data(request_data)
+    df = get_indicators_data(request_data)
     if df is None or df.empty:
         raise ValueError("No price data available for the given dates.")
     df["Date"] = pd.to_datetime(df["Date"])

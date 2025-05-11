@@ -58,3 +58,6 @@ TEST*.xml
 
 #─── Ignore source files directory ───────────────────────────────────────────
 src/files/
+
+#─── Python compiled files ────────────────────────────────────────────────
+*.pyc

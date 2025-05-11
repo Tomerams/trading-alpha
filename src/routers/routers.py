@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from backtest import backtester
-from backtest.meta_model import train_meta_model_from_request
+from backtest.backtest_trading_model_train import train_meta_model_from_request
 from config import MODEL_PARAMS, OPTUNA_PARAMS
 from data import data_processing
 from backtest import backtest_tuning
@@ -19,7 +19,7 @@ router = APIRouter(prefix="", tags=["Booking Items"])
 @router.post("/indicators", summary="Fetch computed indicator data for an asset")
 async def get_data(request_data: UpdateIndicatorsData):
     try:
-        response = data_processing.get_data(request_data)
+        response = data_processing.get_indicators_data(request_data)
 
         return JSONResponse(response.to_dict(orient="records"), status_code=200)
 
