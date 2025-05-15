@@ -1,4 +1,6 @@
+import logging
 import os
+import time
 import joblib
 import numpy as np
 import pandas as pd
@@ -96,28 +98,51 @@ def load_model(
     ticker: str, model_type: str
 ) -> Tuple[torch.nn.Module, object, List[str]]:
     """
-    Load a saved model, scaler, and feature list.
-    Rebuild with head size = len(target_cols).
+    Load a saved model, scaler, and feature list—with timing & existence checks.
     """
+    logging.info("start lad moodel")
     base = f"files/models/{ticker}_{model_type}"
     mp = f"{base}.pt"
     sp = f"{base}_scaler.pkl"
     fp = f"{base}_features.pkl"
 
-    if not (os.path.exists(mp) and os.path.exists(sp) and os.path.exists(fp)):
-        raise FileNotFoundError(f"Model files for {ticker}-{model_type} not found.")
+    logging.info(
+        "   • [load_model] looking for:\n      model=%s\n      scaler=%s\n      feats=%s",
+        mp,
+        sp,
+        fp,
+    )
 
+    # 1) Check that all files exist
+    for path in (mp, sp, fp):
+        if not os.path.exists(path):
+            logging.error("   • [load_model] MISSING file: %s", path)
+            raise FileNotFoundError(f"Model file not found: {path}")
+
+    # 2) Load the checkpoint
+    t0 = time.time()
     checkpoint = torch.load(mp, map_location="cpu")
+    dt = time.time() - t0
+    logging.info("   • [load_model] torch.load finished in %.2f s", dt)
+
+    # 3) Load scaler & feature list
+    t1 = time.time()
     scaler = joblib.load(sp)
     features = joblib.load(fp)
+    dt2 = time.time() - t1
+    logging.info("   • [load_model] joblib.load scaler+features in %.2f s", dt2)
 
-    # dynamic head
+    # 4) Rebuild model head to match target_cols
     output_size = len(MODEL_PARAMS.get("target_cols", []))
     model = get_model(
         input_size=len(features), model_type=model_type, output_size=output_size
     )
+
+    # 5) Load weights & eval
     model.load_state_dict(checkpoint)
     model.eval()
+    logging.info("   • [load_model] model rebuilt and state_dict loaded")
+
     return model, scaler, features
 
 

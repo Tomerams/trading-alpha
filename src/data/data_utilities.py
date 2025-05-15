@@ -34,12 +34,14 @@ def get_exclude_from_scaling() -> set:
         base + targets + pattern_cols + external_cols + binary_cols + datefeature_cols
     )
 
+
 CACHE_DIR = "flies/data/cache"
+
 
 def get_data(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     ticker = request_data.stock_ticker
     start = request_data.start_date
-    end   = request_data.end_date
+    end = request_data.end_date
 
     # fname = f"{ticker}_{start}_{end}.csv"
     # fpath = os.path.join(CACHE_DIR, fname)
