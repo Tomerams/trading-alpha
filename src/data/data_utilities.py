@@ -53,7 +53,7 @@ def get_data(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     #     return df
 
     # 2) Otherwise download
-    df = yf.download(ticker, start=start, end=end, interval="1d")
+    df = yf.download(ticker, start=start, end=end, interval="1d", auto_adjust=True)
     if df.empty:
         raise ValueError(f"No data for {ticker}")
 

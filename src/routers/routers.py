@@ -1,16 +1,20 @@
+import io
 from fastapi import BackgroundTasks, HTTPException
 import logging
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from backtest import backtester
-from backtest.backtest_trading_model_train import train_meta_model_from_request
+from models.model_signals_decision_train import train_meta_model_from_request
 from config import MODEL_PARAMS, OPTUNA_PARAMS
 from data import data_processing
 from backtest import backtest_tuning
-from models.model_tuning import run_optuna
-from models import model_trainer
+from models.model_prediction_tuning import run_optuna
+from models import model_prediction_trainer
 from routers.routers_entities import UpdateIndicatorsData
+from visualization.swing_signals import (
+    get_visualizations,
+)
 from visualization.visualization_plot import generate_trade_plot
 
 router = APIRouter(prefix="", tags=["Booking Items"])
@@ -31,7 +35,7 @@ async def get_data(request_data: UpdateIndicatorsData):
 @router.post("/train", summary="Train a forecasting model on historical data")
 async def train_model(request_data: UpdateIndicatorsData):
     try:
-        response = model_trainer.train_single(request_data)
+        response = model_prediction_trainer.train_single(request_data)
 
         return JSONResponse(response.to_dict(orient="records"), status_code=200)
 
@@ -118,10 +122,20 @@ def get_tuning_result():
 @router.post("/backtest-train", summary="Train the meta-model (BUY/SELL/HOLD AI)")
 async def meta_train_ai(request_data: UpdateIndicatorsData):
     try:
-        train_meta_model_from_request(request_data)
-        return JSONResponse(
-            {"status": "Meta model trained successfully."}, status_code=200
-        )
+        result = train_meta_model_from_request(request_data)
+        return {"status": "success", **result}
     except Exception as err:
         logging.exception("Meta model training failed.")
         raise HTTPException(status_code=500, detail="Meta model training failed.")
+
+
+@router.get("/swing/{ticker}")
+async def swing_chart(
+    ticker: str,
+    start: str = None,
+    end: str = None,
+    window: int = 5,
+    prominence: float = 0.01
+):
+    img_bytes = get_visualizations(ticker, start, end, window, prominence)
+    return StreamingResponse(io.BytesIO(img_bytes), media_type="image/png")

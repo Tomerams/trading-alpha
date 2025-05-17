@@ -5,7 +5,7 @@ import math
 import numpy as np
 import torch
 from backtest.backtest_utilities import decide_action_meta
-from backtest.backtest_trading_model_train import load_meta_model
+from models.model_signals_decision_train import load_meta_model
 from config import MODEL_PARAMS
 from data.data_processing import get_indicators_data
 from models.model_utilities import load_model
