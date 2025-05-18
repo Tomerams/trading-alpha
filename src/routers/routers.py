@@ -119,7 +119,7 @@ def get_tuning_result():
     )
 
 
-@router.post("/backtest-train", summary="Train the meta-model (BUY/SELL/HOLD AI)")
+@router.post("/train-meta-model", summary="Train the meta-model (BUY/SELL/HOLD AI)")
 async def meta_train_ai(request_data: UpdateIndicatorsData):
     try:
         result = train_meta_model_from_request(request_data)
