@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy.signal import argrelextrema
-from config import Pattern
+from config.features_config import Pattern
 
 
 def detect_double_top(prices, order=5):

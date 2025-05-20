@@ -5,7 +5,8 @@ from torch.utils.data import DataLoader, TensorDataset
 import torch
 import torch.nn as nn
 
-from config import OPTUNA_PARAMS, MODEL_PARAMS
+from config.optimizations_config import OPTUNA_PARAMS
+from config.model_trainer_config import MODEL_TRAINER_PARAMS, TRAIN_TARGETS_PARAMS
 from data.data_processing import get_indicators_data
 from models.model_utilities import get_model, time_based_split, create_sequences
 from pathlib import Path
@@ -19,13 +20,13 @@ def _prepare_loaders(request_data, seq_len, batch_size):
     feature_cols = [
         c
         for c in df.columns
-        if c not in ("Date", "Close", *MODEL_PARAMS["target_cols"])
+        if c not in ("Date", "Close", *TRAIN_TARGETS_PARAMS["target_cols"])
     ]
     X_tr, y_tr = create_sequences(
-        train_df, feature_cols, MODEL_PARAMS["target_cols"], seq_len
+        train_df, feature_cols, TRAIN_TARGETS_PARAMS["target_cols"], seq_len
     )
     X_val, y_val = create_sequences(
-        val_df, feature_cols, MODEL_PARAMS["target_cols"], seq_len
+        val_df, feature_cols, TRAIN_TARGETS_PARAMS["target_cols"], seq_len
     )
 
     scaler = StandardScaler().fit(X_tr.reshape(-1, X_tr.shape[-1]))
@@ -67,12 +68,12 @@ def objective(trial, request_data):
     # 3) instantiate model (pass num_heads into MODEL_PARAMS or directly to get_model)
     model = get_model(
         input_size=train_loader.dataset.tensors[0].shape[-1],
-        model_type=MODEL_PARAMS["model_type"],
-        output_size=len(MODEL_PARAMS["target_cols"]),
+        model_type=MODEL_TRAINER_PARAMS["model_type"],
+        output_size=len(TRAIN_TARGETS_PARAMS["target_cols"]),
         hidden_size=hidden_size,
         num_layers=num_layers,
         dropout=dropout_rate,
-        num_heads=num_heads,  # חשוב – לוודא ש־get_model תומך בפרמטר הזה
+        num_heads=num_heads,
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)

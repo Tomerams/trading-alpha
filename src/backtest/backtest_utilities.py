@@ -2,7 +2,8 @@ import pandas as pd
 import math
 import logging
 from typing import List, Dict, Any
-from config import MODEL_PARAMS
+
+from config.backtest_config import BACKTEST_PARAMS
 
 
 def decide_action_meta(meta_model, preds, target_cols, i):
@@ -28,19 +29,19 @@ def simulate_trades(
     :param verbose: whether to log progress
     :return: dict with ticker_change, net_profit, max_loss_per_trade, trades_signals
     """
-    cash = MODEL_PARAMS["initial_balance"]
+    cash = BACKTEST_PARAMS["initial_balance"]
     shares = 0
     last_price = 0.0
     highest_price = None
     max_loss = 0.0
     trades: List[Dict[str, Any]] = []
 
-    stop_pct = MODEL_PARAMS["stop_loss_pct"]
-    profit_tgt = MODEL_PARAMS["profit_target"]
-    trail_stop = MODEL_PARAMS["trailing_stop"]
-    fee_share = MODEL_PARAMS["buy_sell_fee_per_share"]
-    min_fee = MODEL_PARAMS["minimum_fee"]
-    tax_rate = MODEL_PARAMS["tax_rate"]
+    stop_pct = BACKTEST_PARAMS["stop_loss_pct"]
+    profit_tgt = BACKTEST_PARAMS["profit_target"]
+    trail_stop = BACKTEST_PARAMS["trailing_stop"]
+    fee_share = BACKTEST_PARAMS["buy_sell_fee_per_share"]
+    min_fee = BACKTEST_PARAMS["minimum_fee"]
+    tax_rate = BACKTEST_PARAMS["tax_rate"]
 
     n_steps = len(dates) - 1
     logging.info(f"Entering trade loop for {n_steps} steps")
@@ -112,7 +113,7 @@ def simulate_trades(
         )
 
     ticker_ret = (prices.iloc[-1] / prices.iloc[0] - 1) * 100
-    net_ret = (cash / MODEL_PARAMS["initial_balance"] - 1) * 100
+    net_ret = (cash / BACKTEST_PARAMS["initial_balance"] - 1) * 100
 
     if verbose:
         logging.info(

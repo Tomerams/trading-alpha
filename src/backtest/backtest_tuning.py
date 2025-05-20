@@ -1,5 +1,5 @@
-from config import MODEL_PARAMS
 from backtest.backtester import backtest_model
+from config.backtest_config import BACKTEST_PARAMS
 from routers.routers_entities import UpdateIndicatorsData
 import pandas as pd
 import itertools
@@ -14,13 +14,13 @@ def optimize_signal_params(
     param_grid keys should match MODEL_PARAMS entries (e.g. 'buying_threshold', etc.).
     """
     param_keys = list(param_grid.keys())
-    original = {k: MODEL_PARAMS.get(k) for k in param_keys}
+    original = {k: BACKTEST_PARAMS.get(k) for k in param_keys}
 
     results = []
     grids = [param_grid[k] for k in param_keys]
     for combo in itertools.product(*grids):
         override = dict(zip(param_keys, combo))
-        MODEL_PARAMS.update(override)
+        BACKTEST_PARAMS.update(override)
         res = backtest_model(request_data, verbose=False)
         entry = {
             **override,
@@ -31,6 +31,6 @@ def optimize_signal_params(
         }
         results.append(entry)
 
-    MODEL_PARAMS.update(original)
+    BACKTEST_PARAMS.update(original)
     df = pd.DataFrame(results)
     return df.sort_values("net_profit", ascending=False).reset_index(drop=True)

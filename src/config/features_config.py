@@ -76,7 +76,7 @@ class BinaryIndicator(Enum):
     BOLLINGER_2PCT_LOWER = "Bollinger_2pct_Lower"
     RSI_BOLLINGER_STRONG_ABOVE = "RSI_Bollinger_Strong_Above"
     RSI_BOLLINGER_STRONG_BELOW = "RSI_Bollinger_Strong_Below"
-    TREND_UP = "TrendUp",
+    TREND_UP = ("TrendUp",)
     TREND_DOWN = "TrendDown"
 
 
@@ -132,88 +132,3 @@ FEATURE_COLUMNS = [
     *[ed.value for ed in ExternalDerivedFeatures],
     *[gap.value for gap in Gaps],
 ]
-
-
-MODEL_PARAMS = {
-    "hidden_size": 64,
-    "output_size": 3,
-    # Model architecture
-    "seq_len": 20,
-    "batch_size": 32,
-    "learning_rate": 1e-3,
-    "epochs": 10,
-    "model_type": "TransformerTCN",
-    # Backtest parameters
-    "initial_balance": 10000,
-    "buy_sell_fee_per_share": 0.01,
-    "minimum_fee": 1,
-    "tax_rate": 0.25,
-    "buying_threshold": 0.05,
-    "selling_threshold": 0.005,
-    "profit_target": 0.05,
-    "trailing_stop": 0.03,
-    "stop_loss_pct": 0.03,
-    # Grids for /optimize-signals endpoint
-    "grid_buying_threshold": [0.0, 0.01, 0.02, 0.05],
-    "grid_selling_threshold": [0.0, 0.005, 0.01, 0.02],
-    "grid_profit_target": [0.02, 0.05, 0.1],
-    "grid_trailing_stop": [0.02, 0.03, 0.05],
-    # Other hyperparameters
-    "weight_decay": 1e-4,
-    "val_ratio": 0.2,
-    "lr_patience": 5,
-    "lr_factor": 0.5,
-    "min_lr": 1e-6,
-    "early_stopping_patience": 10,
-    "target_type": "log",
-    # dynamic targets
-    "target_cols": [
-        "Target_Tomorrow",
-        "Target_2_Days",
-        "Target_3_Days",
-        "Target_5_Days",
-        "Target_8_Days",
-        "Target_13_Days",
-        "Target_21_Days",
-        "NextLocalMaxPct",
-        "NextLocalMinPct",
-        "BarsToNextLocalMax",
-        "BarsToNextLocalMin",
-    ],
-    "shift_targets": [
-        {"name": "Tomorrow", "shift": -1},
-        {"name": "2_Days", "shift": -2},
-        {"name": "3_Days", "shift": -3},
-        {"name": "5_Days", "shift": -5},
-        {"name": "8_Days", "shift": -8},
-        {"name": "13_Days", "shift": -13},
-        {"name": "21_Days", "shift": -21},
-    ],
-    "extrema_window": 10,
-    "trend_ema_short": 10,
-    "trend_ema_long": 30,
-    # GBM signal model flags & thresholds
-    "use_gbm_signals": False,
-    "gbm_buy_threshold": 0.6,
-    "gbm_sell_threshold": 0.4,
-    "gbm_params": {"n_estimators": 100, "max_depth": 3, "learning_rate": 0.1},
-}
-
-
-OPTUNA_PARAMS = {
-    "n_trials": 50,
-    "timeout_seconds": 3600,
-    "max_epochs": 100,
-    "batch_size": 64,
-    "early_stopping_patience": 5,
-}
-
-
-BACKTEST_PARAMS = {
-    "initial_balance": 10000,
-    "tax_rate": 0.25,
-    "forecast_steps": 5,
-    "starting_point": 20,
-    "buy_sell_fee_per_share": 0.01,
-    "minimum_fee": 1,
-}

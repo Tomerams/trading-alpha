@@ -1,0 +1,40 @@
+META_PARAMS = {
+    "meta_model_path": "files/models/meta_action_model.pkl",
+    "buy_threshold": 0.002,
+    "sell_threshold": -0.002,
+    "peak_window": 5,
+    "peak_prominence": 0.01,
+    "val_size": 0.2,
+    "stack_cv_folds": 5,
+    "n_jobs": -1,
+    "passthrough": False,
+    "verbose": 1,
+    "base_learners": {
+        "lgbm": {"n_estimators": 200, "max_depth": 5, "random_state": 42},
+        "xgb": {
+            "use_label_encoder": False,
+            "eval_metric": "mlogloss",
+            "n_estimators": 200,
+            "max_depth": 4,
+            "random_state": 42,
+        },
+        "rf": {
+            "n_estimators": 200,
+            "max_depth": 5,
+            "class_weight": "balanced_subsample",
+            "random_state": 42,
+            "n_jobs": -1,
+        },
+        "mlp": {
+            "hidden_layer_sizes": (64, 32),
+            "max_iter": 200,
+            "early_stopping": True,
+            "random_state": 42,
+        },
+    },
+    "final_estimator": {
+        "multi_class": "multinomial",
+        "solver": "lbfgs",
+        "max_iter": 500,
+    },
+}

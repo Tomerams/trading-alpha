@@ -10,7 +10,7 @@ from torch.cuda.amp import autocast, GradScaler
 from sklearn.preprocessing import StandardScaler
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from config import MODEL_PARAMS
+from config.model_trainer_config import MODEL_TRAINER_PARAMS, TRAIN_TARGETS_PARAMS
 from routers.routers_entities import UpdateIndicatorsData
 from data.data_processing import get_indicators_data
 from data.data_utilities import get_exclude_from_scaling
@@ -20,7 +20,7 @@ from models.model_utilities import get_model, time_based_split, create_sequences
 def train_single(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     os.makedirs("files/models", exist_ok=True)
     ticker = request_data.stock_ticker
-    model_type = MODEL_PARAMS.get("model_type", "LSTM")
+    model_type = MODEL_TRAINER_PARAMS.get("model_type", "LSTM")
     model_path = f"files/models/{ticker}_{model_type}.pt"
     scaler_path = f"files/models/{ticker}_{model_type}_scaler.pkl"
     feats_path = f"files/models/{ticker}_{model_type}_features.pkl"
@@ -28,13 +28,13 @@ def train_single(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     # 1) Load data
     df = get_indicators_data(request_data)
     df["Date"] = pd.to_datetime(df["Date"])
-    target_cols = MODEL_PARAMS["target_cols"]
+    target_cols = TRAIN_TARGETS_PARAMS["target_cols"]
     exclude = get_exclude_from_scaling() | set(target_cols)
     feature_cols = [c for c in df.columns if c not in exclude]
 
     # 2) Split & sequences
     train_df, val_df, test_df = time_based_split(df)
-    seq_len = MODEL_PARAMS.get("seq_len", 10)
+    seq_len = MODEL_TRAINER_PARAMS.get("seq_len", 10)
     X_tr, y_tr = create_sequences(train_df, feature_cols, target_cols, seq_len)
     X_va, y_va = create_sequences(val_df, feature_cols, target_cols, seq_len)
     X_te, y_te = create_sequences(test_df, feature_cols, target_cols, seq_len)
@@ -46,7 +46,7 @@ def train_single(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     X_te = scaler.transform(X_te.reshape(-1, X_te.shape[-1])).reshape(X_te.shape)
 
     # 4) DataLoaders (shuffle only train)
-    bs = MODEL_PARAMS.get("batch_size", 32)
+    bs = MODEL_TRAINER_PARAMS.get("batch_size", 32)
     train_loader = DataLoader(
         TensorDataset(torch.from_numpy(X_tr).float(), torch.from_numpy(y_tr).float()),
         batch_size=bs,
@@ -75,7 +75,7 @@ def train_single(request_data: UpdateIndicatorsData) -> pd.DataFrame:
         device
     )
     optimizer = torch.optim.Adam(
-        model.parameters(), lr=MODEL_PARAMS.get("learning_rate", 1e-3)
+        model.parameters(), lr=MODEL_TRAINER_PARAMS.get("learning_rate", 1e-3)
     )
     scheduler = ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=3, verbose=True
@@ -86,8 +86,8 @@ def train_single(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     # 6) Training loop with early stopping
     best_val = float("inf")
     epochs_no_improve = 0
-    patience = MODEL_PARAMS.get("early_stopping_patience", 5)
-    epochs = MODEL_PARAMS.get("epochs", 50)
+    patience = MODEL_TRAINER_PARAMS.get("early_stopping_patience", 5)
+    epochs = MODEL_TRAINER_PARAMS.get("epochs", 50)
 
     for epoch in range(1, epochs + 1):
         # –– train
@@ -141,7 +141,7 @@ def train_single(request_data: UpdateIndicatorsData) -> pd.DataFrame:
 
     # 8) Test-time predictions + Monte Carlo Dropout confidence
     model.train()  # keep dropout active
-    mc_runs = MODEL_PARAMS.get("mc_dropout_runs", 20)
+    mc_runs = MODEL_TRAINER_PARAMS.get("mc_dropout_runs", 20)
     all_preds = []
     for _ in range(mc_runs):
         preds = []

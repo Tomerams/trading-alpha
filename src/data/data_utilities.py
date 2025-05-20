@@ -1,13 +1,14 @@
 import os
 import pandas as pd
-from config import (
-    MODEL_PARAMS,
+from config.features_config import (
     Gaps,
     Pattern,
     BinaryIndicator,
     ExternalDerivedFeatures,
     DateFeatures,
 )
+
+from config.model_trainer_config import TRAIN_TARGETS_PARAMS
 import yfinance as yf
 
 
@@ -18,7 +19,7 @@ def get_exclude_from_scaling() -> set:
     """
     base = ["Date", "Close"]
     # shift-based targets
-    targets = MODEL_PARAMS.get("target_cols", [])
+    targets = TRAIN_TARGETS_PARAMS.get("target_cols", [])
     # pattern features
     pattern_cols = [p.value for p in Pattern]
     # external derived features

@@ -5,16 +5,13 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from backtest import backtester
+from config.optimizations_config import BACKTEST_OPTIMIZATIONS_PARAMS, OPTUNA_PARAMS
 from models.model_signals_decision_train import train_meta_model_from_request
-from config import MODEL_PARAMS, OPTUNA_PARAMS
 from data import data_processing
 from backtest import backtest_tuning
 from models.model_prediction_tuning import run_optuna
 from models import model_prediction_trainer
 from routers.routers_entities import UpdateIndicatorsData
-from visualization.swing_signals import (
-    get_visualizations,
-)
 from visualization.visualization_plot import generate_trade_plot
 
 router = APIRouter(prefix="", tags=["Booking Items"])
@@ -66,10 +63,14 @@ async def optimize_signals(request_data: UpdateIndicatorsData):
     try:
         # param_grid is provided via MODEL_PARAMS or can be sent in request_data
         param_grid = {
-            "buying_threshold": MODEL_PARAMS.get("grid_buying_threshold"),
-            "selling_threshold": MODEL_PARAMS.get("grid_selling_threshold"),
-            "profit_target": MODEL_PARAMS.get("grid_profit_target"),
-            "trailing_stop": MODEL_PARAMS.get("grid_trailing_stop"),
+            "buying_threshold": BACKTEST_OPTIMIZATIONS_PARAMS.get(
+                "grid_buying_threshold"
+            ),
+            "selling_threshold": BACKTEST_OPTIMIZATIONS_PARAMS.get(
+                "grid_selling_threshold"
+            ),
+            "profit_target": BACKTEST_OPTIMIZATIONS_PARAMS.get("grid_profit_target"),
+            "trailing_stop": BACKTEST_OPTIMIZATIONS_PARAMS.get("grid_trailing_stop"),
         }
         df = backtest_tuning.optimize_signal_params(request_data, param_grid)
         # ensure DataFrame to JSON
@@ -127,15 +128,3 @@ async def meta_train_ai(request_data: UpdateIndicatorsData):
     except Exception as err:
         logging.exception("Meta model training failed.")
         raise HTTPException(status_code=500, detail="Meta model training failed.")
-
-
-@router.get("/swing/{ticker}")
-async def swing_chart(
-    ticker: str,
-    start: str = None,
-    end: str = None,
-    window: int = 5,
-    prominence: float = 0.01,
-):
-    img_bytes = get_visualizations(ticker, start, end, window, prominence)
-    return StreamingResponse(io.BytesIO(img_bytes), media_type="image/png")

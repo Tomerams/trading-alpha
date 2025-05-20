@@ -5,7 +5,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import torch
-from config import MODEL_PARAMS
+from config.model_trainer_config import MODEL_TRAINER_PARAMS, TRAIN_TARGETS_PARAMS
 from models.model_architecture import (
     LSTMModel,
     CNNLSTMModel,
@@ -32,12 +32,12 @@ def get_model(
     """
     # 1) determine output size
     if output_size is None:
-        output_size = MODEL_PARAMS.get("output_size", 3)
+        output_size = MODEL_TRAINER_PARAMS.get("output_size", 3)
 
     # 2) merge hyperparam overrides with MODEL_PARAMS defaults
-    hs = hidden_size or MODEL_PARAMS.get("hidden_size", 64)
-    nl = num_layers or MODEL_PARAMS.get("num_layers", 1)
-    dr = dropout or MODEL_PARAMS.get("dropout", 0.0)
+    hs = hidden_size or MODEL_TRAINER_PARAMS.get("hidden_size", 64)
+    nl = num_layers or MODEL_TRAINER_PARAMS.get("num_layers", 1)
+    dr = dropout or MODEL_TRAINER_PARAMS.get("dropout", 0.0)
 
     # 3) build the selected model
     model_map = {
@@ -133,7 +133,7 @@ def load_model(
     logging.info("   • [load_model] joblib.load scaler+features in %.2f s", dt2)
 
     # 4) Rebuild model head to match target_cols
-    output_size = len(MODEL_PARAMS.get("target_cols", []))
+    output_size = len(TRAIN_TARGETS_PARAMS.get("target_cols", []))
     model = get_model(
         input_size=len(features), model_type=model_type, output_size=output_size
     )

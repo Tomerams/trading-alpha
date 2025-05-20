@@ -3,8 +3,7 @@ import numpy as np
 import ta
 from ta.volume import OnBalanceVolumeIndicator, AccDistIndexIndicator
 from ta.trend import EMAIndicator
-from config import (
-    MODEL_PARAMS,
+from config.features_config import (
     BinaryIndicator,
     DateFeatures,
     ExternalDerivedFeatures,
