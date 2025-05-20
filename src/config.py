@@ -76,21 +76,42 @@ class BinaryIndicator(Enum):
     BOLLINGER_2PCT_LOWER = "Bollinger_2pct_Lower"
     RSI_BOLLINGER_STRONG_ABOVE = "RSI_Bollinger_Strong_Above"
     RSI_BOLLINGER_STRONG_BELOW = "RSI_Bollinger_Strong_Below"
+    TREND_UP = "TrendUp",
+    TREND_DOWN = "TrendDown"
 
 
 class Pattern(Enum):
     DOUBLE_TOP = "double_top"
-    HEAD_SHOULDERS = "head_and_shoulders"
-    CUP_HANDLE = "cup_and_handle"
+    DOUBLE_BOTTOM = "double_bottom"
     TRIPLE_TOP = "triple_top"
-    TRIPLE_BOTTOM = "triple_bottm"
+    TRIPLE_BOTTOM = "triple_bottom"
+    HEAD_SHOULDERS = "head_and_shoulders"
+    INVERSE_HEAD_AND_SHOULDERS = "inverse_head_and_shoulders"
+    CUP_HANDLE = "cup_and_handle"
+    ASCENDING_TRIANGLE = "ascending_triangle"
+    DESCENDING_TRIANGLE = "descending_triangle"
+    SYMMETRICAL_TRIANGLE = "symmetrical_triangle"
+    RECTANGLE_PATTERN = "rectangle_pattern"
+    BULLISH_FLAG = "bullish_flag"
+    BEARISH_FLAG = "bearish_flag"
     BULLISH_ENGULFING = "bullish_engulfing"
     BEARISH_ENGULFING = "bearish_engulfing"
+
+
+class Gaps(Enum):
+    GAP = "Gap"
+    GAP_PCT = "Gap_Pct"
+    GAP_UP = "Gap_Up"
+    GAP_DOWN = "Gap_Down"
+    GAP_STILL_OPEN = "Gap_Still_Open"
 
 
 class DateFeatures(Enum):
     DAY_OF_WEEK = "Day_Of_Week"
     MONTH = "Month"
+    DAY_OF_MONTH = "Day_of_Month"
+    QUARTER = "Quarter"
+    DAY_OF_YEAR = "Day_of_Year"
 
 
 class ExternalDerivedFeatures(Enum):
@@ -109,6 +130,7 @@ FEATURE_COLUMNS = [
     *[g.value for g in GannFeaturs],
     *[d.value for d in DateFeatures],
     *[ed.value for ed in ExternalDerivedFeatures],
+    *[gap.value for gap in Gaps],
 ]
 
 
@@ -155,7 +177,8 @@ MODEL_PARAMS = {
         "Target_21_Days",
         "NextLocalMaxPct",
         "NextLocalMinPct",
-        "TrendDirection",
+        "BarsToNextLocalMax",
+        "BarsToNextLocalMin",
     ],
     "shift_targets": [
         {"name": "Tomorrow", "shift": -1},

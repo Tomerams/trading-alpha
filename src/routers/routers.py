@@ -135,7 +135,7 @@ async def swing_chart(
     start: str = None,
     end: str = None,
     window: int = 5,
-    prominence: float = 0.01
+    prominence: float = 0.01,
 ):
     img_bytes = get_visualizations(ticker, start, end, window, prominence)
     return StreamingResponse(io.BytesIO(img_bytes), media_type="image/png")

@@ -40,7 +40,7 @@ def backtest_model(request_data, verbose=True):
             logging.error("   • load_model error for %s: %s", ticker, e, exc_info=True)
             raise RuntimeError(f"Failed to load model for {ticker}")
 
-        seq_len     = MODEL_PARAMS["seq_len"]
+        seq_len = MODEL_PARAMS["seq_len"]
         target_cols = MODEL_PARAMS["target_cols"]
 
         # 2) Fetch indicators
@@ -49,7 +49,8 @@ def backtest_model(request_data, verbose=True):
         df = get_indicators_data(request_data)
         logging.info(
             "   • get_indicators_data returned in %.2fs — shape %s",
-            time.time() - t0, df.shape
+            time.time() - t0,
+            df.shape,
         )
         df["Date"] = pd.to_datetime(df["Date"])
         df.dropna(inplace=True)
@@ -58,29 +59,28 @@ def backtest_model(request_data, verbose=True):
         logging.info("   • about to build X array")
         t1 = time.time()
         if seq_len > 1:
-            X = np.stack([
-                df[feature_cols].iloc[i : i + seq_len].values
-                for i in range(len(df) - seq_len)
-            ])
-            dates     = df["Date"].iloc[seq_len:].reset_index(drop=True)
-            prices    = df["Close"].iloc[seq_len:].reset_index(drop=True)
+            X = np.stack(
+                [
+                    df[feature_cols].iloc[i : i + seq_len].values
+                    for i in range(len(df) - seq_len)
+                ]
+            )
+            dates = df["Date"].iloc[seq_len:].reset_index(drop=True)
+            prices = df["Close"].iloc[seq_len:].reset_index(drop=True)
             true_vals = df[target_cols].iloc[seq_len:].values
         else:
-            X         = df[feature_cols].values
-            dates     = df["Date"].reset_index(drop=True)
-            prices    = df["Close"].reset_index(drop=True)
+            X = df[feature_cols].values
+            dates = df["Date"].reset_index(drop=True)
+            prices = df["Close"].reset_index(drop=True)
             true_vals = df[target_cols].values
-        logging.info(
-            "   • built X in %.2fs — X.shape=%s",
-            time.time() - t1, X.shape
-        )
+        logging.info("   • built X in %.2fs — X.shape=%s", time.time() - t1, X.shape)
 
         # 4) Scale & infer
         logging.info("   • about to scale features")
         try:
             if seq_len > 1:
-                n_feat   = X.shape[2]
-                X_flat   = X.reshape(-1, n_feat)
+                n_feat = X.shape[2]
+                X_flat = X.reshape(-1, n_feat)
                 X_scaled = scaler.transform(X_flat).reshape(X.shape)
             else:
                 X_scaled = scaler.transform(X)
@@ -100,7 +100,8 @@ def backtest_model(request_data, verbose=True):
             preds = model(X_tensor).cpu().numpy()
         logging.info(
             "   • inference done in %.2fs — preds.shape=%s",
-            time.time() - t2, preds.shape
+            time.time() - t2,
+            preds.shape,
         )
 
         # 5) Load meta-model
@@ -111,29 +112,30 @@ def backtest_model(request_data, verbose=True):
             status = "FOUND" if meta_model else "NOT FOUND"
         except Exception as e:
             logging.warning(
-                "   • load_meta_model error: %s — proceeding without meta-model", e, exc_info=True
+                "   • load_meta_model error: %s — proceeding without meta-model",
+                e,
+                exc_info=True,
             )
             meta_model = None
             status = "ERROR"
         logging.info(
-            "   • load_meta_model returned in %.2fs — %s",
-            time.time() - t3, status
+            "   • load_meta_model returned in %.2fs — %s", time.time() - t3, status
         )
 
         # 6) Initialize state
-        cash          = MODEL_PARAMS["initial_balance"]
-        shares        = 0
-        last_price    = 0.0
+        cash = MODEL_PARAMS["initial_balance"]
+        shares = 0
+        last_price = 0.0
         highest_price = None
-        max_loss      = 0.0
-        trades        = []
+        max_loss = 0.0
+        trades = []
 
-        stop_pct   = MODEL_PARAMS["stop_loss_pct"]
+        stop_pct = MODEL_PARAMS["stop_loss_pct"]
         profit_tgt = MODEL_PARAMS["profit_target"]
         trail_stop = MODEL_PARAMS["trailing_stop"]
-        fee_share  = MODEL_PARAMS["buy_sell_fee_per_share"]
-        min_fee    = MODEL_PARAMS["minimum_fee"]
-        tax_rate   = MODEL_PARAMS["tax_rate"]
+        fee_share = MODEL_PARAMS["buy_sell_fee_per_share"]
+        min_fee = MODEL_PARAMS["minimum_fee"]
+        tax_rate = MODEL_PARAMS["tax_rate"]
 
         # 7) Trade loop
         n_steps = len(dates) - 1
@@ -150,75 +152,83 @@ def backtest_model(request_data, verbose=True):
                 except Exception as e:
                     logging.warning(
                         "   • meta-model error at step %d: %s — defaulting to HOLD",
-                        i, e, exc_info=True
+                        i,
+                        e,
+                        exc_info=True,
                     )
 
             if shares:
                 highest_price = max(highest_price, price)
 
-            stop_hit   = shares and price < last_price * (1 - stop_pct)
-            trail_hit  = shares and price < highest_price * (1 - trail_stop)
+            stop_hit = shares and price < last_price * (1 - stop_pct)
+            trail_hit = shares and price < highest_price * (1 - trail_stop)
             profit_hit = shares and price >= last_price * (1 + profit_tgt)
-            fee        = max(shares * fee_share, min_fee) if shares else 0.0
+            fee = max(shares * fee_share, min_fee) if shares else 0.0
 
             # BUY
             if not shares and action == 2:
                 shares = math.floor((cash - fee) / price)
-                cash   -= shares * price + fee
-                last_price    = price
+                cash -= shares * price + fee
+                last_price = price
                 highest_price = price
-                trades.append({
-                    "Date":      date.strftime("%Y-%m-%dT%H:%M:%S"),
-                    "Type":      "BUY",
-                    "Price":     price,
-                    "Portfolio": cash + shares * price,
-                })
+                trades.append(
+                    {
+                        "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "Type": "BUY",
+                        "Price": price,
+                        "Portfolio": cash + shares * price,
+                    }
+                )
 
             # SELL
             elif shares and (action == 0 or stop_hit or trail_hit or profit_hit):
                 tax = tax_rate * (price - last_price) * shares
                 cash += shares * price - fee - tax
                 change_pct = (price - last_price) / last_price * 100
-                max_loss   = min(max_loss, change_pct)
-                trades.append({
-                    "Date":      date.strftime("%Y-%m-%dT%H:%M:%S"),
-                    "Type":      "SELL",
-                    "Price":     price,
-                    "Portfolio": cash,
-                    "Change_%":  change_pct,
-                    "Tax":       tax,
-                })
-                shares        = 0
+                max_loss = min(max_loss, change_pct)
+                trades.append(
+                    {
+                        "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "Type": "SELL",
+                        "Price": price,
+                        "Portfolio": cash,
+                        "Change_%": change_pct,
+                        "Tax": tax,
+                    }
+                )
+                shares = 0
                 highest_price = None
 
         logging.info("   • trade loop done in %.2fs", time.time() - t_all)
 
         # 8) Finalize any open position
         if shares:
-            price   = float(prices.iloc[-1])
-            tax     = tax_rate * (price - last_price) * shares
-            cash   += shares * price - tax
+            price = float(prices.iloc[-1])
+            tax = tax_rate * (price - last_price) * shares
+            cash += shares * price - tax
             change_pct = (price - last_price) / last_price * 100
-            max_loss   = min(max_loss, change_pct)
-            trades.append({
-                "Date":      dates.iloc[-1].strftime("%Y-%m-%dT%H:%M:%S"),
-                "Type":      "SELL",
-                "Price":     price,
-                "Portfolio": cash,
-                "Change_%":  change_pct,
-                "Tax":       tax,
-            })
+            max_loss = min(max_loss, change_pct)
+            trades.append(
+                {
+                    "Date": dates.iloc[-1].strftime("%Y-%m-%dT%H:%M:%S"),
+                    "Type": "SELL",
+                    "Price": price,
+                    "Portfolio": cash,
+                    "Change_%": change_pct,
+                    "Tax": tax,
+                }
+            )
 
         # 9) Compute returns
         ticker_ret = (prices.iloc[-1] / prices.iloc[0] - 1) * 100
-        net_ret    = (cash / MODEL_PARAMS["initial_balance"] - 1) * 100
+        net_ret = (cash / MODEL_PARAMS["initial_balance"] - 1) * 100
 
-        logging.info( "✅ backtest_model complete in %.2fs", time.time() - t_all )
+        logging.info("✅ backtest_model complete in %.2fs", time.time() - t_all)
         return {
-            "ticker_change":      ticker_ret,
-            "net_profit":         net_ret,
+            "ticker_change": ticker_ret,
+            "net_profit": net_ret,
             "max_loss_per_trade": max_loss,
-            "trades_signals":     trades,
+            "trades_signals": trades,
         }
 
     except Exception:

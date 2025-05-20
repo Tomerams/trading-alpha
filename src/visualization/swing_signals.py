@@ -10,15 +10,9 @@ from config import MODEL_PARAMS
 
 
 def fetch_price_history(
-    ticker: str,
-    start: str = None,
-    end: str = None
+    ticker: str, start: str = None, end: str = None
 ) -> pd.DataFrame:
-    rd = UpdateIndicatorsData(
-        stock_ticker=ticker,
-        start_date=start,
-        end_date=end
-    )
+    rd = UpdateIndicatorsData(stock_ticker=ticker, start_date=start, end_date=end)
     df = get_data(rd)
 
     df = df.reset_index()
@@ -28,9 +22,7 @@ def fetch_price_history(
 
 
 def simulate_swing_trades(
-    df: pd.DataFrame,
-    close_col: str = "Close",
-    signal_col: str = "swing_signal"
+    df: pd.DataFrame, close_col: str = "Close", signal_col: str = "swing_signal"
 ) -> pd.DataFrame:
     """
     Simulate trades by buying at troughs (signal=1) and selling at peaks (signal=-1).
@@ -80,7 +72,7 @@ def get_visualizations(
     start: str = None,
     end: str = None,
     window: int = 5,
-    prominence: float = 0.01
+    prominence: float = 0.01,
 ) -> bytes:
     # 1) Fetch raw prices
     df = fetch_price_history(ticker, start, end)
@@ -91,7 +83,7 @@ def get_visualizations(
         close_col="Close",
         signal_col="swing_signal",
         window=window,
-        prominence=prominence
+        prominence=prominence,
     )
 
     # 3) Simulate buy/sell trades

@@ -16,7 +16,7 @@ def simulate_trades(
     prices: pd.Series,
     preds: Any,
     target_cols: List[str],
-    verbose: bool = False
+    verbose: bool = False,
 ) -> Dict[str, Any]:
     """
     Runs the trade simulation loop and returns performance metrics and trades.
@@ -64,12 +64,14 @@ def simulate_trades(
             cash -= shares * price + fee
             last_price = price
             highest_price = price
-            trades.append({
-                "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
-                "Type": "BUY",
-                "Price": price,
-                "Portfolio": cash + shares * price,
-            })
+            trades.append(
+                {
+                    "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "Type": "BUY",
+                    "Price": price,
+                    "Portfolio": cash + shares * price,
+                }
+            )
 
         # SELL
         elif shares and (action == 0 or stop_hit or trail_hit or profit_hit):
@@ -77,14 +79,16 @@ def simulate_trades(
             cash += shares * price - fee - tax
             change_pct = (price - last_price) / last_price * 100
             max_loss = min(max_loss, change_pct)
-            trades.append({
-                "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
-                "Type": "SELL",
-                "Price": price,
-                "Portfolio": cash,
-                "Change_%": change_pct,
-                "Tax": tax,
-            })
+            trades.append(
+                {
+                    "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "Type": "SELL",
+                    "Price": price,
+                    "Portfolio": cash,
+                    "Change_%": change_pct,
+                    "Tax": tax,
+                }
+            )
             shares = 0
             highest_price = None
 
@@ -96,20 +100,24 @@ def simulate_trades(
         cash += shares * price - tax
         change_pct = (price - last_price) / last_price * 100
         max_loss = min(max_loss, change_pct)
-        trades.append({
-            "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
-            "Type": "SELL",
-            "Price": price,
-            "Portfolio": cash,
-            "Change_%": change_pct,
-            "Tax": tax,
-        })
+        trades.append(
+            {
+                "Date": date.strftime("%Y-%m-%dT%H:%M:%S"),
+                "Type": "SELL",
+                "Price": price,
+                "Portfolio": cash,
+                "Change_%": change_pct,
+                "Tax": tax,
+            }
+        )
 
     ticker_ret = (prices.iloc[-1] / prices.iloc[0] - 1) * 100
     net_ret = (cash / MODEL_PARAMS["initial_balance"] - 1) * 100
 
     if verbose:
-        logging.info(f"Ticker Change: {ticker_ret:.2f}% | Portfolio Return: {net_ret:.2f}% | Max Loss: {max_loss:.2f}%")
+        logging.info(
+            f"Ticker Change: {ticker_ret:.2f}% | Portfolio Return: {net_ret:.2f}% | Max Loss: {max_loss:.2f}%"
+        )
 
     return {
         "ticker_change": ticker_ret,
