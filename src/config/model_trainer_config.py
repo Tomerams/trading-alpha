@@ -29,7 +29,7 @@ TRAIN_TARGETS_PARAMS = {
 MODEL_TRAINER_PARAMS = {
     "hidden_size": 64,
     "output_size": 3,
-    "seq_len": 20,
+    "seq_len": 21,
     "batch_size": 32,
     "learning_rate": 1e-3,
     "epochs": 10,

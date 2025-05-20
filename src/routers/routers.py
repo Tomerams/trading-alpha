@@ -14,7 +14,7 @@ from models import model_prediction_trainer
 from routers.routers_entities import UpdateIndicatorsData
 from visualization.visualization_plot import generate_trade_plot
 
-router = APIRouter(prefix="", tags=["Booking Items"])
+router = APIRouter(prefix="", tags=["Alpha Trading"])
 
 
 @router.post("/indicators", summary="Fetch computed indicator data for an asset")
