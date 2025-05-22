@@ -30,7 +30,7 @@ def get_exclude_from_scaling() -> set:
     # binary indicators
     binary_cols = [i.value for i in BinaryIndicator]
     # date-related features
-    datefeature_cols = [d.value for d in DateFeatures]
+    date_feature_cols = [d.value for d in DateFeatures]
 
     gap_flag_cols = [
         Gaps.GAP_UP.value,
@@ -43,7 +43,7 @@ def get_exclude_from_scaling() -> set:
         + pattern_cols
         + external_cols
         + binary_cols
-        + datefeature_cols
+        + date_feature_cols
         + gap_flag_cols
     )
 

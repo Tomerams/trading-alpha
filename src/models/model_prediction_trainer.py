@@ -20,7 +20,7 @@ from models.model_utilities import get_model, time_based_split, create_sequences
 def train_single(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     os.makedirs("files/models", exist_ok=True)
     ticker = request_data.stock_ticker
-    model_type = MODEL_TRAINER_PARAMS.get("model_type", "LSTM")
+    model_type = MODEL_TRAINER_PARAMS.get("model_type", "TransformerTCN")
     model_path = f"files/models/{ticker}_{model_type}.pt"
     scaler_path = f"files/models/{ticker}_{model_type}_scaler.pkl"
     feats_path = f"files/models/{ticker}_{model_type}_features.pkl"

@@ -106,7 +106,7 @@ def train_meta_model_from_request(request_data: UpdateIndicatorsData) -> dict:
         )
         base_models["xgb"] = xgbc
 
-    if META_PARAMS.get("use_rf", False):
+    if META_PARAMS.get("use_rf", True):
         log.info("🚀 Training RandomForest base learner")
         rf = RandomForestClassifier(**META_PARAMS["rf"])
         rf.fit(X_tr, y_tr)
