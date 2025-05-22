@@ -21,7 +21,7 @@ META_PARAMS = {
         "min_gain_to_split": 0.0,
         "min_child_samples": 10,
         "max_depth": 6,
-        "num_leaves": 31
+        "num_leaves": 31,
     },
     "xgb": {
         "use_label_encoder": False,
@@ -29,25 +29,25 @@ META_PARAMS = {
         "n_estimators": 1000,
         "early_stopping_rounds": 10,
         "max_depth": 4,
-        "random_state": 42
+        "random_state": 42,
     },
     "rf": {
         "n_estimators": 200,
         "max_depth": 5,
         "class_weight": "balanced_subsample",
         "random_state": 42,
-        "n_jobs": -1
+        "n_jobs": -1,
     },
     "mlp": {
         "hidden_layer_sizes": (64, 32),
         "max_iter": 200,
         "early_stopping": True,
-        "random_state": 42
+        "random_state": 42,
     },
     "final_estimator": {
         "multi_class": "multinomial",
         "solver": "lbfgs",
-        "max_iter": 500
+        "max_iter": 500,
     },
-    "seq_len": 21
+    "seq_len": 21,
 }

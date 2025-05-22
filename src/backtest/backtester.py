@@ -1,18 +1,18 @@
 import logging
-import os
 import time
 import math
-from typing import Optional, List, Dict, Any
+from typing import List, Dict, Any
 
+import joblib
 import numpy as np
 import pandas as pd
 import torch
 
 from config.backtest_config import BACKTEST_PARAMS
 from config.model_trainer_config import MODEL_TRAINER_PARAMS
+from config.meta_data_config import META_PARAMS
 from data.data_processing import get_indicators_data
 from models.model_utilities import load_model
-from backtest.backtest_utilities import decide_action_meta
 
 log = logging.getLogger(__name__)
 if not log.handlers:
@@ -20,171 +20,133 @@ if not log.handlers:
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
 
+# --- Preload meta pipeline at import time to avoid request-time hangs ---
+_meta_pipeline: Dict[str, Any]
+try:
+    t_import_start = time.time()
+    log.info("⏳ Pre-loading meta pipeline from %s…", META_PARAMS["meta_model_path"])
+    _meta_pipeline = joblib.load(META_PARAMS["meta_model_path"])
+    log.info(
+        "✅ Pre-loaded meta pipeline in %.2fs (%d base learners)",
+        time.time() - t_import_start,
+        len(_meta_pipeline.get("base", {})),
+    )
+except Exception as e:
+    log.warning("⚠️ Pre-load meta pipeline failed: %s", e)
+    _meta_pipeline = None
+
 
 def backtest_model(request_data) -> Dict[str, Any]:
-    """
-    Orchestrates a backtest run: loads models, prepares data, simulates trades.
-    Returns summary statistics and trade log.
-    """
     ticker = request_data.stock_ticker
-    log.info(f"▶️  Start backtest for {ticker}")
-    start_time = time.time()
+    log.info("▶️  Starting backtest for %s", ticker)
+    t0 = time.time()
 
-    # --- load models ---
-    model, scaler, feature_cols, seq_len = _load_base(request_data)
-    meta_model = _load_meta()
-
-    # --- fetch and preprocess data ---
-    df = _get_data(request_data)
-    dates, prices, X_scaled, true_vals = _prepare_inputs(
-        df, feature_cols, scaler, seq_len, request_data.target_cols
+    # 1) Load deep base (TransformerTCN)
+    log.info("⏳ Loading deep base-model…")
+    t1 = time.time()
+    deep_model, scaler, feature_cols = load_model(
+        ticker, MODEL_TRAINER_PARAMS["model_type"]
+    )
+    seq_len = MODEL_TRAINER_PARAMS["seq_len"]
+    log.info(
+        "✅ Deep base loaded in %.2fs (features=%d)", time.time() - t1, len(feature_cols)
     )
 
-    # --- run inference ---
-    base_preds = _infer_base(model, X_scaled)
+    # 2) Use preloaded meta pipeline
+    if _meta_pipeline:
+        meta_base_models: Dict[str, Any] = _meta_pipeline["base"]
+        meta_clf = _meta_pipeline["meta"]
+    else:
+        log.warning("⚠️ Running without meta pipeline; only deep base signals used")
+        meta_base_models = {}
+        meta_clf = None
 
-    # --- simulate trades ---
-    trades, stats = _simulate_trades(
-        dates, prices, base_preds, meta_model, request_data.target_cols
-    )
-
-    log.info(f"✅ Backtest complete in {time.time() - start_time:.1f}s")
-    return {**stats, "trades_signals": trades}
-
-
-# ------------ helper functions ------------
-
-
-def _load_base(request_data):
-    """Load base model, scaler, features, seq_len."""
-    try:
-        model, scaler, feature_cols, seq_len = load_model(
-            request_data.stock_ticker, MODEL_TRAINER_PARAMS["model_type"]
-        )
-        log.info("   • Base model loaded")
-        return model, scaler, feature_cols, seq_len
-    except Exception as e:
-        log.error("   • Failed to load base model: %s", e, exc_info=True)
-        raise
-
-
-def _load_meta() -> Optional[Any]:
-    """Attempt to load meta-model; return None if unavailable."""
-    try:
-        meta = load_model()
-        status = "FOUND" if meta else "NOT FOUND"
-        log.info(f"   • Meta-model {status}")
-        return meta
-    except Exception as e:
-        log.warning("   • Meta-model load error: %s", e, exc_info=True)
-        return None
-
-
-def _get_data(request_data) -> pd.DataFrame:
-    """Fetch indicator-enriched DataFrame and drop NA."""
-    df = get_indicators_data(request_data)
+    # 3) Fetch & prepare data
+    log.info("⏳ Fetching & preparing data…")
+    t3 = time.time()
+    df = get_indicators_data(request_data).dropna().reset_index(drop=True)
     df["Date"] = pd.to_datetime(df["Date"])
-    df.dropna(inplace=True)
-    log.info("   • Data fetched: %s rows", len(df))
-    return df
 
-
-def _prepare_inputs(
-    df: pd.DataFrame,
-    feature_cols: List[str],
-    scaler,
-    seq_len: int,
-    target_cols: List[str],
-):
-    """Builds date/price arrays, feature matrix X, and true target values."""
     if seq_len > 1:
-        sequences = [
+        seqs = [
             df[feature_cols].iloc[i : i + seq_len].values
             for i in range(len(df) - seq_len)
         ]
-        X = np.stack(sequences)
-        out_idx = slice(seq_len, None)
+        X = np.stack(seqs)
+        idx = slice(seq_len, None)
     else:
         X = df[feature_cols].values
-        out_idx = slice(None)
+        idx = slice(None)
 
-    dates = df["Date"].iloc[out_idx].reset_index(drop=True)
-    prices = df["Close"].iloc[out_idx].reset_index(drop=True)
-    true_vals = df[target_cols].iloc[out_idx].values
+    dates = df["Date"].iloc[idx].reset_index(drop=True)
+    prices = df["Close"].iloc[idx].reset_index(drop=True)
 
-    # scale
     if seq_len > 1:
         flat = X.reshape(-1, X.shape[-1])
         X_scaled = scaler.transform(flat).reshape(X.shape)
     else:
         X_scaled = scaler.transform(X)
 
-    return dates, prices, X_scaled, true_vals
+    log.info("✅ Data ready in %.2fs (rows=%d)", time.time() - t3, len(dates))
 
-
-def _infer_base(model, X_scaled):
-    """Run base-model inference."""
-    X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
-    if X_tensor.ndim == 2:
-        X_tensor = X_tensor.unsqueeze(1)
+    # 4) Deep-model inference
+    log.info("⏳ Running deep-model inference…")
+    t4 = time.time()
+    tensor = torch.tensor(X_scaled, dtype=torch.float32)
+    if tensor.ndim == 2:
+        tensor = tensor.unsqueeze(1)
     with torch.no_grad():
-        preds = model(X_tensor).cpu().numpy()
-    log.info("   • Inference complete: preds shape %s", preds.shape)
-    return preds
+        deep_preds = deep_model(tensor).cpu().numpy()
+    log.info("✅ Deep inference done in %.2fs", time.time() - t4)
 
-
-def _simulate_trades(
-    dates, prices, preds, meta_model, target_cols
-) -> (List[Dict], Dict[str, float]):
-    """Executes the trading logic over time."""
-    cash = BACKTEST_PARAMS["initial_balance"]
-    shares = 0
-    last_price = 0.0
-    highest = 0.0
-    trades = []
-
-    stop_pct = BACKTEST_PARAMS["stop_loss_pct"]
-    trail_pct = BACKTEST_PARAMS["trailing_stop"]
-    profit_pct = BACKTEST_PARAMS["profit_target"]
-    fee_per = BACKTEST_PARAMS["buy_sell_fee_per_share"]
-    min_fee = BACKTEST_PARAMS["minimum_fee"]
-    tax_rate = BACKTEST_PARAMS["tax_rate"]
+    # 5) Simulate trades (meta + stops)
+    log.info("⏳ Simulating trades…")
+    t5 = time.time()
+    cash, shares, last_price, peak = (BACKTEST_PARAMS["initial_balance"], 0, 0.0, 0.0)
+    trades: List[Dict[str, Any]] = []
 
     for i, date in enumerate(dates[:-1]):
         price = float(prices.iloc[i])
-        action = 1  # hold default
-        if meta_model:
-            action = decide_action_meta(meta_model, preds, target_cols, i)
+        # Determine action
+        if meta_clf:
+            feat = deep_preds[i : i + 1, :]
+            meta_feats = np.column_stack(
+                [clf.predict_proba(feat)[:, 1] for clf in meta_base_models.values()]
+            )
+            action = int(meta_clf.predict(meta_feats)[0])
+        else:
+            action = 1  # hold if no meta
 
-        # update highest for trailing stop
         if shares:
-            highest = max(highest, price)
+            peak = max(peak, price)
 
-        # decide buy/sell
         # BUY
-        if action == 2 and not shares:
-            fee = max(min_fee, fee_per)
+        if action == 2 and shares == 0:
+            fee = max(
+                BACKTEST_PARAMS["minimum_fee"],
+                BACKTEST_PARAMS["buy_sell_fee_per_share"],
+            )
             shares = math.floor((cash - fee) / price)
             cash -= shares * price + fee
-            last_price = price
-            highest = price
+            last_price, peak = price, price
             trades.append({"Date": date, "Type": "BUY", "Price": price, "Cash": cash})
 
-        # SELL or stops
-        elif shares and (
+        # SELL or stop-loss
+        elif shares > 0 and (
             action == 0
-            or price <= last_price * (1 - stop_pct)
-            or price <= highest * (1 - trail_pct)
-            or price >= last_price * (1 + profit_pct)
+            or price <= last_price * (1 - BACKTEST_PARAMS["stop_loss_pct"])
+            or price <= peak * (1 - BACKTEST_PARAMS["trailing_stop_pct"])
         ):
-            fee = max(min_fee, shares * fee_per)
-            tax = tax_rate * (price - last_price) * shares
+            fee = max(
+                BACKTEST_PARAMS["minimum_fee"],
+                shares * BACKTEST_PARAMS["buy_sell_fee_per_share"],
+            )
+            tax = BACKTEST_PARAMS["tax_rate"] * (price - last_price) * shares
             cash += shares * price - fee - tax
             trades.append({"Date": date, "Type": "SELL", "Price": price, "Cash": cash})
             shares = 0
 
-    # finalize open position
-    if shares:
+    if shares > 0:
         final_price = float(prices.iloc[-1])
         cash += shares * final_price
         trades.append(
@@ -196,9 +158,16 @@ def _simulate_trades(
             }
         )
 
+    for tr in trades:
+        dt = tr["Date"]
+        if hasattr(dt, "isoformat"):
+            tr["Date"] = dt.isoformat()
+
+    log.info("✅ Simulation done in %.2fs", time.time() - t5)
+    log.info("🏁 Total backtest time: %.2fs", time.time() - t0)
+
     stats = {
         "ticker_change": (prices.iloc[-1] / prices.iloc[0] - 1) * 100,
         "net_profit": (cash / BACKTEST_PARAMS["initial_balance"] - 1) * 100,
-        # other stats can be added here
     }
-    return trades, stats
+    return {**stats, "trades_signals": trades}
