@@ -30,13 +30,13 @@ def get_logger() -> logging.Logger:
         logger.setLevel(logging.INFO)
     return logger
 
+
 log = get_logger()
 
 
 def prepare_meta_dataset(request_data: UpdateIndicatorsData):
     model, scaler, features = load_model(
-        request_data.stock_ticker,
-        META_PARAMS["model_type"]
+        request_data.stock_ticker, META_PARAMS["model_type"]
     )
     seq_len = META_PARAMS["seq_len"]
     df = get_indicators_data(request_data).dropna().reset_index(drop=True)
@@ -57,7 +57,9 @@ def prepare_meta_dataset(request_data: UpdateIndicatorsData):
 def train_base_learners(X_tr, y_tr, X_va, y_va):
     base = {}
     if META_PARAMS.get("use_lgbm", True):
-        params = {k: v for k, v in META_PARAMS["lgbm"].items() if k != "early_stopping_rounds"}
+        params = {
+            k: v for k, v in META_PARAMS["lgbm"].items() if k != "early_stopping_rounds"
+        }
         clf = lgb.LGBMClassifier(**params)
         clf.fit(
             X_tr,
@@ -112,7 +114,9 @@ def train_meta_model_from_request(request_data: UpdateIndicatorsData) -> dict:
     base = train_base_learners(X_tr, y_tr, X_va, y_va)
     train_meta_X = build_meta_features(base, X_tr)
     val_meta_X = build_meta_features(base, X_va)
-    meta_clf = LogisticRegression(**META_PARAMS["final_estimator"]).fit(train_meta_X, y_tr)
+    meta_clf = LogisticRegression(**META_PARAMS["final_estimator"]).fit(
+        train_meta_X, y_tr
+    )
     report = classification_report(y_va, meta_clf.predict(val_meta_X), digits=4)
     path = META_PARAMS["meta_model_path"]
     os.makedirs(os.path.dirname(path), exist_ok=True)

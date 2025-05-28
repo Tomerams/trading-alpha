@@ -9,6 +9,7 @@ app = FastAPI()
 
 
 app.include_router(routers.router, prefix="/api")
+
 handler = Mangum(app)
 
 logging.basicConfig(level=logging.DEBUG)

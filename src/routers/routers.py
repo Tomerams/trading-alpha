@@ -1,8 +1,9 @@
-import io
+from pathlib import Path
 from fastapi import BackgroundTasks, HTTPException
 import logging
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
+import joblib
 
 from backtest import backtester
 from config.optimizations_config import BACKTEST_OPTIMIZATIONS_PARAMS, OPTUNA_PARAMS
@@ -128,3 +129,22 @@ async def meta_train_ai(request_data: UpdateIndicatorsData):
     except Exception as err:
         logging.exception("Meta model training failed.")
         raise HTTPException(status_code=500, detail="Meta model training failed.")
+    
+
+
+BASE = Path(__file__).resolve().parent.parent            # → trading-alpha/src
+PIPELINE_PATH = BASE / "files" / "models" / "meta_action_model.pkl"
+
+@router.get("/inspect_meta_sync", summary="Inspect pipeline (sync)")
+def inspect_meta_sync():
+    if not PIPELINE_PATH.exists():
+        raise HTTPException(404, f"File not found at {PIPELINE_PATH}")
+    try:
+        pipeline = joblib.load(PIPELINE_PATH)
+    except Exception as e:
+        raise HTTPException(500, f"joblib.load failed: {e}")
+    return {
+        "status": "success",
+        "keys": list(pipeline.keys()),
+        "meta_type": pipeline["meta"].__class__.__name__
+    }

@@ -1,6 +1,12 @@
+import os
+
+THIS_DIR = os.path.dirname(__file__)
+PROJECT_SRC = os.path.abspath(os.path.join(THIS_DIR, os.pardir))
+
+
 META_PARAMS = {
     "model_type": "TransformerTCN",
-    "meta_model_path": "files/models/meta_action_model.pkl",
+    "meta_model_path": "models/meta_action_model.pkl",
     "buy_threshold": 0.002,
     "sell_threshold": -0.002,
     "peak_window": 5,
