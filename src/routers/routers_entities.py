@@ -10,3 +10,4 @@ class UpdateIndicatorsData(BaseModel):
     end_date: str = Field(
         default_factory=lambda: (date.today() - timedelta(days=1)).isoformat()
     )
+    debug: bool = False
