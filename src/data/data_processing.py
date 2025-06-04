@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from data.action_labels import make_action_label_quantile
 from data.features import calculate_features
-from data.targets import calculate_targets, make_action_label
+from data.targets import calculate_targets
 from routers.routers_entities import UpdateIndicatorsData
 from data.data_utilities import get_data, get_exclude_from_scaling
 

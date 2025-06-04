@@ -11,10 +11,8 @@ from sklearn.preprocessing import StandardScaler
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from config.model_trainer_config import MODEL_TRAINER_PARAMS, TRAIN_TARGETS_PARAMS
-from data.targets import make_action_label
 from routers.routers_entities import UpdateIndicatorsData
 from data.data_processing import get_indicators_data
-from data.data_utilities import get_exclude_from_scaling
 from models.model_utilities import get_model, time_based_split, create_sequences
 
 
@@ -30,8 +28,8 @@ def train_single(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     df = get_indicators_data(request_data)
     df["Date"] = pd.to_datetime(df["Date"])
     target_cols = TRAIN_TARGETS_PARAMS["target_cols"]
-    exclude = get_exclude_from_scaling() | set(target_cols)
-    feature_cols = [c for c in df.columns if c not in exclude]
+    non_feature_cols = set(TRAIN_TARGETS_PARAMS["target_cols"]) | {"action_label"}
+    feature_cols = [c for c in df.columns if c not in non_feature_cols]
 
     # 2) Split & sequences
     train_df, val_df, test_df = time_based_split(df)
