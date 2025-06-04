@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
+from data.action_labels import make_action_label_quantile
 from data.features import calculate_features
-from data.targets import calculate_targets
+from data.targets import calculate_targets, make_action_label
 from routers.routers_entities import UpdateIndicatorsData
 from data.data_utilities import get_data, get_exclude_from_scaling
 
@@ -18,6 +19,7 @@ def get_indicators_data(request_data: UpdateIndicatorsData) -> pd.DataFrame:
 
     df = calculate_features(df)
     df = calculate_targets(df)
+    df["action_label"] = make_action_label_quantile(df, horizon="Target_3_Days", q=0.20)
 
     numeric = df.select_dtypes(include=[np.number]).columns.tolist()
     exclude = get_exclude_from_scaling()

@@ -11,6 +11,7 @@ from sklearn.preprocessing import StandardScaler
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from config.model_trainer_config import MODEL_TRAINER_PARAMS, TRAIN_TARGETS_PARAMS
+from data.targets import make_action_label
 from routers.routers_entities import UpdateIndicatorsData
 from data.data_processing import get_indicators_data
 from data.data_utilities import get_exclude_from_scaling
