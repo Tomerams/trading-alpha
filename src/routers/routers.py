@@ -7,7 +7,7 @@ import joblib
 
 from backtest import backtester
 from config.optimizations_config import BACKTEST_OPTIMIZATIONS_PARAMS, OPTUNA_PARAMS
-from models.model_signals_decision_train import train_meta_model_from_request
+from models.model_meta_trainer import train_meta_model_from_request
 from data import data_processing
 from backtest import backtest_tuning
 from models.model_prediction_tuning import run_optuna
@@ -34,8 +34,7 @@ async def get_data(request_data: UpdateIndicatorsData):
 async def train_model(request_data: UpdateIndicatorsData):
     try:
         response = model_prediction_trainer.train_single(request_data)
-
-        return JSONResponse(response.to_dict(orient="records"), status_code=200)
+        return JSONResponse(response, status_code=200)
 
     except Exception as err:
         logging.exception(err)

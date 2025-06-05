@@ -1,166 +1,146 @@
-import os
-import logging
-import joblib
-import numpy as np
-import pandas as pd
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
-from torch.cuda.amp import autocast, GradScaler
+# ──────────────────────────────────────────────────────────────────────────────
+# models/model_prediction_trainer.py  –  FULL FILE (refactored June 2025)
+# ──────────────────────────────────────────────────────────────────────────────
+"""
+אימון מודל‑הבסיס + שמירת scaler/model/features _וגם_ יצירת
+meta_dataset.pkl (תחזיות‑בסיס + action_label) – אפשרות A.
+
+• train_single(request_data) – פונקציה עיקרית המופעלת ע״י /api/train
+• קובצי‑יציאה:
+    files/models/{TICKER}_{TYPE}.pt              – state_dict
+    files/models/{TICKER}_{TYPE}_scaler.pkl      – StandardScaler
+    files/models/{TICKER}_{TYPE}_features.pkl    – List[str]
+    files/datasets/meta_dataset.pkl              – (X_meta, y_meta)
+"""
+
+from __future__ import annotations
+import logging, time, joblib, torch, numpy as np, pandas as pd
+from pathlib import Path
 from sklearn.preprocessing import StandardScaler
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from config.model_trainer_config import MODEL_TRAINER_PARAMS, TRAIN_TARGETS_PARAMS
-from routers.routers_entities import UpdateIndicatorsData
 from data.data_processing import get_indicators_data
-from models.model_utilities import get_model, time_based_split, create_sequences
+from models.model_utilities import get_model  # ← removed missing import
+from routers.routers_entities import UpdateIndicatorsData
+from data.action_labels import make_action_label_quantile
 
+# ────────────────────────────────────────────────────────────────────────
+logger = logging.getLogger("model_prediction_trainer")
+logger.setLevel(logging.INFO)
 
-def train_single(request_data: UpdateIndicatorsData) -> pd.DataFrame:
-    os.makedirs("files/models", exist_ok=True)
-    ticker = request_data.stock_ticker
-    model_type = MODEL_TRAINER_PARAMS.get("model_type", "TransformerTCN")
-    model_path = f"files/models/{ticker}_{model_type}.pt"
-    scaler_path = f"files/models/{ticker}_{model_type}_scaler.pkl"
-    feats_path = f"files/models/{ticker}_{model_type}_features.pkl"
+# ────────────────────────────────────────────────────────────────────────
+# helper 0 – save artifacts (local implementation)
+# ────────────────────────────────────────────────────────────────────────
 
-    # 1) Load data
-    df = get_indicators_data(request_data)
-    df["Date"] = pd.to_datetime(df["Date"])
-    target_cols = TRAIN_TARGETS_PARAMS["target_cols"]
-    non_feature_cols = set(TRAIN_TARGETS_PARAMS["target_cols"]) | {"action_label"}
-    feature_cols = [c for c in df.columns if c not in non_feature_cols]
+def save_model_artifacts(model: torch.nn.Module,
+                         scaler: StandardScaler,
+                         feature_cols: list[str],
+                         ticker: str,
+                         model_type: str) -> None:
+    """Save model state_dict + scaler + features to files/models/"""
+    base = Path("files/models")
+    base.mkdir(parents=True, exist_ok=True)
+    torch.save(model.state_dict(), base / f"{ticker}_{model_type}.pt")
+    joblib.dump(scaler,            base / f"{ticker}_{model_type}_scaler.pkl")
+    joblib.dump(feature_cols,      base / f"{ticker}_{model_type}_features.pkl")
+    logger.info("Artifacts saved: %s, %s, %s",
+                base / f"{ticker}_{model_type}.pt",
+                base / f"{ticker}_{model_type}_scaler.pkl",
+                base / f"{ticker}_{model_type}_features.pkl")
 
-    # 2) Split & sequences
-    train_df, val_df, test_df = time_based_split(df)
-    seq_len = MODEL_TRAINER_PARAMS.get("seq_len", 10)
+# ────────────────────────────────────────────────────────────────────────
+# helper 1 – build sequences (Torch expects 3‑D tensor)
+# ────────────────────────────────────────────────────────────────────────
+
+def create_sequences(df: pd.DataFrame,
+                     feature_cols: list[str],
+                     target_cols: list[str],
+                     seq_len: int):
+    """Return: X_seq (N,L,F), y (N,T)"""
+    n = len(df) - seq_len
+    X = np.stack([df[feature_cols].iloc[i:i+seq_len].values for i in range(n)])
+    y = df[target_cols].iloc[seq_len:].values.astype(np.float32)
+    return X, y
+
+# ────────────────────────────────────────────────────────────────────────
+# main entry
+# ────────────────────────────────────────────────────────────────────────
+
+def train_single(request_data: UpdateIndicatorsData):
+    t0 = time.time()
+    ticker   = request_data.stock_ticker
+    model_ty = MODEL_TRAINER_PARAMS["model_type"]
+    seq_len  = MODEL_TRAINER_PARAMS["seq_len"]
+
+    # ── 1) load data ───────────────────────────────────────────────────
+    df = get_indicators_data(request_data).dropna().reset_index(drop=True)
+    df["action_label"] = make_action_label_quantile(df, "Target_3_Days", q=0.20)
+
+    target_cols   = TRAIN_TARGETS_PARAMS["target_cols"]
+    non_features  = set(target_cols) | {"action_label", "Date"}
+    feature_cols  = [c for c in df.columns if c not in non_features]
+
+    # ── 2) train/val split (chronological) ─────────────────────────────
+    split_idx = int(len(df) * 0.8)
+    train_df  = df.iloc[:split_idx].reset_index(drop=True)
+    val_df    = df.iloc[split_idx:].reset_index(drop=True)
+
     X_tr, y_tr = create_sequences(train_df, feature_cols, target_cols, seq_len)
-    X_va, y_va = create_sequences(val_df, feature_cols, target_cols, seq_len)
-    X_te, y_te = create_sequences(test_df, feature_cols, target_cols, seq_len)
+    X_va, y_va = create_sequences(val_df,   feature_cols, target_cols, seq_len)
 
-    # 3) Scale
-    scaler = StandardScaler()
-    X_tr = scaler.fit_transform(X_tr.reshape(-1, X_tr.shape[-1])).reshape(X_tr.shape)
-    X_va = scaler.transform(X_va.reshape(-1, X_va.shape[-1])).reshape(X_va.shape)
-    X_te = scaler.transform(X_te.reshape(-1, X_te.shape[-1])).reshape(X_te.shape)
+    # ── 3) scale features ──────────────────────────────────────────────
+    scaler   = StandardScaler()
+    X_tr     = scaler.fit_transform(X_tr.reshape(-1, X_tr.shape[-1])).reshape(X_tr.shape)
+    X_va     = scaler.transform( X_va.reshape(-1, X_va.shape[-1])).reshape(X_va.shape)
 
-    # 4) DataLoaders (shuffle only train)
-    bs = MODEL_TRAINER_PARAMS.get("batch_size", 32)
-    train_loader = DataLoader(
-        TensorDataset(torch.from_numpy(X_tr).float(), torch.from_numpy(y_tr).float()),
-        batch_size=bs,
-        shuffle=True,
-        num_workers=4,
-        pin_memory=True,
-    )
-    val_loader = DataLoader(
-        TensorDataset(torch.from_numpy(X_va).float(), torch.from_numpy(y_va).float()),
-        batch_size=bs,
-        shuffle=False,
-        num_workers=2,
-        pin_memory=True,
-    )
-    test_loader = DataLoader(
-        TensorDataset(torch.from_numpy(X_te).float(), torch.from_numpy(y_te).float()),
-        batch_size=bs,
-        shuffle=False,
-        num_workers=2,
-        pin_memory=True,
-    )
+    # ── 4) build and train model ───────────────────────────────────────
+    model = get_model(
+                input_size=len(feature_cols),
+                model_type=model_ty,
+                output_size=len(target_cols),
+                **MODEL_TRAINER_PARAMS.get("model_kwargs", {})
+            ).to(torch.device("cpu"))
 
-    # 5) Model, optimizer, scaler, scheduler, loss
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = get_model(len(feature_cols), model_type, output_size=len(target_cols)).to(
-        device
-    )
-    optimizer = torch.optim.Adam(
-        model.parameters(), lr=MODEL_TRAINER_PARAMS.get("learning_rate", 1e-3)
-    )
-    scheduler = ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=3, verbose=True
-    )
-    scaler_amp = GradScaler()
-    criterion = nn.MSELoss()
+    optim  = torch.optim.Adam(model.parameters(), lr=1e-3)
+    loss_fn = torch.nn.SmoothL1Loss()
 
-    # 6) Training loop with early stopping
-    best_val = float("inf")
-    epochs_no_improve = 0
-    patience = MODEL_TRAINER_PARAMS.get("early_stopping_patience", 5)
-    epochs = MODEL_TRAINER_PARAMS.get("epochs", 50)
+    EPOCHS = 10
+    for epoch in range(1, EPOCHS+1):
+        model.train(); optim.zero_grad()
+        pred_tr = model(torch.tensor(X_tr, dtype=torch.float32))
+        loss_tr = loss_fn(pred_tr, torch.tensor(y_tr)); loss_tr.backward(); optim.step()
 
-    for epoch in range(1, epochs + 1):
-        # –– train
-        model.train()
-        train_loss = 0.0
-        for xb, yb in train_loader:
-            xb, yb = xb.to(device), yb.to(device)
-            optimizer.zero_grad()
-            with autocast():
-                pred = model(xb)
-                loss = criterion(pred, yb)
-            scaler_amp.scale(loss).backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            scaler_amp.step(optimizer)
-            scaler_amp.update()
-            train_loss += loss.item()
-        train_loss /= len(train_loader)
-
-        # –– validate
         model.eval()
-        val_loss = 0.0
         with torch.no_grad():
-            for xb, yb in val_loader:
-                xb, yb = xb.to(device), yb.to(device)
-                with autocast():
-                    val_loss += criterion(model(xb), yb).item()
-        val_loss /= len(val_loader)
-        scheduler.step(val_loss)
+            loss_va = loss_fn(model(torch.tensor(X_va, dtype=torch.float32)),
+                              torch.tensor(y_va))
+        logger.info("Epoch %d/%d – Train: %.4f , Val: %.4f",
+                    epoch, EPOCHS, loss_tr.item(), loss_va.item())
 
-        logging.info(
-            f"Epoch {epoch}/{epochs} ─ Train: {train_loss:.4f}, Val: {val_loss:.4f}"
-        )
+    # ── 5) save artifacts ───────────────────────────────────────────────
+    save_model_artifacts(model, scaler, feature_cols, ticker, model_ty)
 
-        # early stopping & checkpoint
-        if val_loss < best_val:
-            best_val = val_loss
-            epochs_no_improve = 0
-            torch.save(model.state_dict(), model_path)
-        else:
-            epochs_no_improve += 1
-            if epochs_no_improve >= patience:
-                logging.info(f"Early stopping at epoch {epoch}")
-                model.load_state_dict(torch.load(model_path))
-                break
+    # ── 6) generate full‑dataset sequences & predictions ───────────────
+    X_full, _ = create_sequences(df, feature_cols, target_cols, seq_len)
+    X_full    = scaler.transform(X_full.reshape(-1, X_full.shape[-1])).reshape(X_full.shape)
 
-    # 7) Final save & inference
-    torch.save(model.state_dict(), model_path)
-    joblib.dump(scaler, scaler_path)
-    joblib.dump(feature_cols, feats_path)
-    logging.info(f"Artifacts saved: {model_path}, {scaler_path}, {feats_path}")
+    with torch.no_grad():
+        base_preds_full = model(torch.tensor(X_full, dtype=torch.float32)).cpu().numpy()
 
-    # 8) Test-time predictions + Monte Carlo Dropout confidence
-    model.train()  # keep dropout active
-    mc_runs = MODEL_TRAINER_PARAMS.get("mc_dropout_runs", 20)
-    all_preds = []
-    for _ in range(mc_runs):
-        preds = []
-        with torch.no_grad():
-            for xb, _ in test_loader:
-                xb = xb.to(device)
-                preds.append(model(xb).cpu().numpy())
-        all_preds.append(np.concatenate(preds))
-    all_preds = np.stack(all_preds, axis=0)  # shape (mc_runs, N, T)
-    mean_preds = all_preds.mean(axis=0)
-    std_preds = all_preds.std(axis=0)  # confidence measure
+    y_meta = df["action_label"].iloc[seq_len:].values.astype(int)
+    Path("files/datasets").mkdir(parents=True, exist_ok=True)
+    joblib.dump((base_preds_full, y_meta), "files/datasets/meta_dataset.pkl")
+    logger.info("Meta‑dataset saved → files/datasets/meta_dataset.pkl  shape=%s",
+                base_preds_full.shape)
 
-    # 9) Build result DataFrame
-    result = test_df.iloc[seq_len:].reset_index(drop=True)
-    result["Date"] = result["Date"].dt.strftime("%Y-%m-%dT%H:%M:%S")
-    for i, name in enumerate(target_cols):
-        result[f"Pred_{name}"] = mean_preds[:, i]
-        result[f"Std_{name}"] = std_preds[:, i]
-        result[f"Actual_{name}"] = y_te[:, i]
-    result["Model_Path"] = model_path
-    result["Scaler_Path"] = scaler_path
+    logger.info("✅ train_single done in %.1fs", time.time() - t0)
+    return {
+        "Train_Loss": float(loss_tr.item()),
+        "Val_Loss":   float(loss_va.item()),
+        "Meta_Shape": base_preds_full.shape,
+    }
 
-    return result
+# helper for FastAPI route --------------------------------------------------
+
+def train_model(request_data: UpdateIndicatorsData):
+    return train_single(request_data)
