@@ -57,7 +57,10 @@ TEST*.xml
 *.mov
 
 #─── Ignore source files directory ───────────────────────────────────────────
-src/files/
+files/
+*.pt
+*.pkl
+*.joblib
 
 #─── Python compiled files ────────────────────────────────────────────────
 *.pyc
