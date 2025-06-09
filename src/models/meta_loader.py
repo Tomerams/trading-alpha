@@ -20,7 +20,7 @@ import joblib
 # ────────────────────────────────────
 # Environment tweaks to avoid thread dead-locks
 # ────────────────────────────────────
-os.environ.setdefault("OMP_NUM_THREADS", "1")        # OpenMP → single thread
+os.environ.setdefault("OMP_NUM_THREADS", "1")  # OpenMP → single thread
 os.environ.setdefault("MKL_THREADING_LAYER", "GNU")  # fixes macOS + MKL clash
 
 logger = logging.getLogger(__name__)
@@ -33,8 +33,9 @@ _cached_meta_model: Optional[Any] = None
 DEFAULT_META_PATH = Path("files/models/meta_action_model.pkl")
 
 
-def load_meta_model(model_path: str | os.PathLike | None = None,
-                    *, use_cache: bool = True) -> Any:
+def load_meta_model(
+    model_path: str | os.PathLike | None = None, *, use_cache: bool = True
+) -> Any:
     """
     Load the meta-model (pickled with joblib) and return the instance.
 

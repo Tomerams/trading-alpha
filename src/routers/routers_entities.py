@@ -11,3 +11,4 @@ class UpdateIndicatorsData(BaseModel):
         default_factory=lambda: (date.today() - timedelta(days=1)).isoformat()
     )
     debug: bool = False
+    model_type: str = "ALL"

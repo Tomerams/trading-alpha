@@ -1,8 +1,8 @@
-
 import numpy as np
 import pandas as pd
 from config.model_trainer_config import TRAIN_TARGETS_PARAMS
 from scipy.signal import argrelextrema
+
 
 def calculate_bars_to_next_turning(prices: np.ndarray, order: int):
     peaks = argrelextrema(prices, np.greater, order=order)[0]
@@ -20,7 +20,6 @@ def calculate_bars_to_next_turning(prices: np.ndarray, order: int):
             bars_to_min[i] = future_troughs[0] - i
 
     return bars_to_max, bars_to_min
-
 
 
 def calculate_targets(df: pd.DataFrame) -> pd.DataFrame:

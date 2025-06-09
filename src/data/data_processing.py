@@ -29,4 +29,3 @@ def get_indicators_data(request_data: UpdateIndicatorsData) -> pd.DataFrame:
     df.dropna(inplace=True)
     df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%Y-%m-%d %H:%M:%S")
     return df
-

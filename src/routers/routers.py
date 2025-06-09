@@ -30,15 +30,24 @@ async def get_data(request_data: UpdateIndicatorsData):
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-@router.post("/train", summary="Train a forecasting model on historical data")
-async def train_model(request_data: UpdateIndicatorsData):
-    try:
-        response = model_prediction_trainer.train_single(request_data)
-        return JSONResponse(response, status_code=200)
+@router.post("/train")
+def train(request: UpdateIndicatorsData):
+    """
+    • אם request.model_type == 'ALL' → מאמן את כל 11 ה-targets ברשימת base_targets
+      ומחזיר dict של תוצאות לכל Target.
+    • אחרת – ממשיך להתנהג כמו קודם (אימון Target בודד).
+    """
+    if request.model_type and request.model_type.upper() == "ALL":
+        return {
+            "status": "batch",
+            "results": model_prediction_trainer.train_all_base_models(request)
+        }
 
-    except Exception as err:
-        logging.exception(err)
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+    # התנהגות קיימת – אימון יעד יחיד
+    return {
+        "status": "single",
+        **model_prediction_trainer.train_single(request)
+    }
 
 
 @router.post("/backtest")
@@ -128,11 +137,11 @@ async def meta_train_ai(request_data: UpdateIndicatorsData):
     except Exception as err:
         logging.exception("Meta model training failed.")
         raise HTTPException(status_code=500, detail="Meta model training failed.")
-    
 
 
-BASE = Path(__file__).resolve().parent.parent            # → trading-alpha/src
+BASE = Path(__file__).resolve().parent.parent  # → trading-alpha/src
 PIPELINE_PATH = BASE / "files" / "models" / "meta_action_model.pkl"
+
 
 @router.get("/inspect_meta_sync", summary="Inspect pipeline (sync)")
 def inspect_meta_sync():
@@ -145,5 +154,5 @@ def inspect_meta_sync():
     return {
         "status": "success",
         "keys": list(pipeline.keys()),
-        "meta_type": pipeline["meta"].__class__.__name__
+        "meta_type": pipeline["meta"].__class__.__name__,
     }

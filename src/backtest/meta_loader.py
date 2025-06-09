@@ -21,7 +21,11 @@ def load_meta_pipeline(path: str, timeout: float = 5.0):
         raise
 
     # Validate pipeline structure
-    if not isinstance(pipeline, dict) or 'base' not in pipeline or 'meta' not in pipeline:
+    if (
+        not isinstance(pipeline, dict)
+        or "base" not in pipeline
+        or "meta" not in pipeline
+    ):
         msg = f"Invalid pipeline format: expected dict with 'base' and 'meta' keys"
         logger.error(msg)
         raise ValueError(msg)

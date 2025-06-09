@@ -1,4 +1,3 @@
-from backtest.backtester import backtest_model
 from config.backtest_config import BACKTEST_PARAMS
 from routers.routers_entities import UpdateIndicatorsData
 import pandas as pd

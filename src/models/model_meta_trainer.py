@@ -1,124 +1,223 @@
+# ─────────────────────────────────────────────────────────────────────────
+# models/model_meta_trainer.py   –  refactor June‑2025 (v3‑multiclass‑fix)
+# ─────────────────────────────────────────────────────────────────────────
+"""
+Meta‑learner trainer
+====================
+• Loads **meta_dataset.pkl** (created by model_prediction_trainer)
+• Derives `Action` labels on‑the‑fly (BUY / HOLD / SELL *or* binary)  
+  via quantiles, unless the column already exists.
+• Trains a stack‑of‑models pipeline:
+      – Base learners   : LightGBM (optionally XGB / RF ‑ yet to add)
+      – Stacking layer  : Logistic‑Regression (weighted, L2)
+• Computes validation metrics that work for both **binary** and **multi‑class**
+    (ROC‑AUC, weighted‑F1, confusion‑matrix).
+• Persists the full pipeline + metrics under ***META_PARAMS['meta_model_path']***
+
+> **Backward‑compat NOTE**  
+> Added `load_meta_model()` so existing code (e.g. *backtester.py*) can still
+> `from models.model_meta_trainer import load_meta_model` without changes.
+"""
+from __future__ import annotations
+
+import json
 import logging
-import os
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
 import joblib
 import numpy as np
-import torch
+import pandas as pd
+from lightgbm import LGBMClassifier, early_stopping, log_evaluation
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report
-from sklearn.model_selection import train_test_split
-import lightgbm as lgb
-from lightgbm import early_stopping, log_evaluation
-import xgboost as xgb
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import confusion_matrix, f1_score, roc_auc_score
+from sklearn.model_selection import StratifiedKFold, train_test_split
+
 from config.meta_data_config import META_PARAMS
-from config.model_trainer_config import TRAIN_TARGETS_PARAMS
-from data.data_processing import get_indicators_data
-from models.meta_dataset import create_meta_ai_dataset
-from models.model_utilities import load_model
 from routers.routers_entities import UpdateIndicatorsData
 
+# ─────────────────────────────────────────────────────────────────────────
+# logging setup
+# -----------------------------------------------------------------------
+log = logging.getLogger("model_meta_trainer")
+if not log.handlers:
+    h = logging.StreamHandler()
+    h.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+    log.addHandler(h)
+log.setLevel(logging.INFO)
 
-def get_logger() -> logging.Logger:
-    logger = logging.getLogger(__name__)
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        handler.setFormatter(
-            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+# ─────────────────────────────────────────────────────────────────────────
+# paths / constants
+# -----------------------------------------------------------------------
+META_PKL = Path("files/datasets/meta_dataset.pkl")
+
+# ─────────────────────────────────────────────────────────────────────────
+# helpers – data loading & label engineering
+# -----------------------------------------------------------------------
+
+def _load_dataset() -> pd.DataFrame:
+    if not META_PKL.exists():
+        raise FileNotFoundError(
+            "meta_dataset.pkl missing – run /api/train first to create it"
         )
-        logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
-    return logger
+    df = pd.read_pickle(META_PKL)
+    log.info("Loaded meta‑dataset: %s  shape=%s", META_PKL, df.shape)
+    return df
 
 
-log = get_logger()
+def _derive_action(df: pd.DataFrame) -> pd.Series:
+    """Return BUY/HOLD/SELL(0/1/2) or binary BUY(1)/REST(0)."""
+    if META_PARAMS.get("binary_labels", False):
+        return (df["Return_3d"] > 0).astype(int)
 
+    thr_buy, thr_sell = df["Return_3d"].quantile([0.67, 0.33])
+    return df["Return_3d"].apply(
+        lambda r: 2 if r >= thr_buy else (0 if r <= thr_sell else 1)
+    ).astype(int)
 
-def prepare_meta_dataset(request_data: UpdateIndicatorsData):
-    model, scaler, features = load_model(
-        request_data.stock_ticker, META_PARAMS["model_type"]
+# ─────────────────────────────────────────────────────────────────────────
+# helpers – models
+# -----------------------------------------------------------------------
+
+def _train_lgbm(
+    Xtr: np.ndarray,
+    ytr: np.ndarray,
+    Xva: np.ndarray,
+    yva: np.ndarray,
+) -> LGBMClassifier:
+    params: Dict[str, Any] = {
+        "n_estimators": 400,
+        "learning_rate": 0.05,
+        "max_depth": 3,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "class_weight": "balanced",
+        "random_state": META_PARAMS.get("random_state", 42),
+        **META_PARAMS.get("lgbm_params", {}),
+    }
+    model = LGBMClassifier(**params).fit(
+        Xtr,
+        ytr,
+        eval_set=[(Xva, yva)],
+        callbacks=[
+            early_stopping(50, verbose=False),
+            log_evaluation(100),
+        ],
     )
-    seq_len = META_PARAMS["seq_len"]
-    df = get_indicators_data(request_data).dropna().reset_index(drop=True)
-    arr = df[features].values
-    if len(arr) < seq_len:
-        raise ValueError(f"Data length {len(arr)} < seq_len {seq_len}")
-    windows = len(arr) - seq_len
-    X = np.stack([arr[i : i + seq_len] for i in range(windows)])
-    flat = X.reshape(-1, X.shape[-1])
-    X_scaled = scaler.transform(flat).reshape(X.shape)
-    with torch.no_grad():
-        preds = model(torch.tensor(X_scaled, dtype=torch.float32)).cpu().numpy()
-    targets = df[TRAIN_TARGETS_PARAMS["target_cols"]].iloc[seq_len:].values
-    preds = preds[: len(targets)]
-    return create_meta_ai_dataset(preds, targets, TRAIN_TARGETS_PARAMS["target_cols"])
+    return model
 
 
-def train_base_learners(X_tr, y_tr, X_va, y_va):
-    base = {}
-    if META_PARAMS.get("use_lgbm", True):
-        params = {
-            k: v for k, v in META_PARAMS["lgbm"].items() if k != "early_stopping_rounds"
-        }
-        clf = lgb.LGBMClassifier(**params)
-        clf.fit(
-            X_tr,
-            y_tr,
-            eval_set=[(X_va, y_va)],
-            callbacks=[
-                early_stopping(
-                    stopping_rounds=META_PARAMS["lgbm"]["early_stopping_rounds"]
-                ),
-                log_evaluation(period=50),
-            ],
-        )
-        base["lgbm"] = clf
-    if META_PARAMS.get("use_xgb", False):
-        params = META_PARAMS["xgb"].copy()
-        estop = params.pop("early_stopping_rounds", None)
-        clf = xgb.XGBClassifier(**params)
-        clf.fit(
-            X_tr,
-            y_tr,
-            eval_set=[(X_va, y_va)],
-            early_stopping_rounds=estop,
-            verbose=True,
-        )
-        base["xgb"] = clf
-    if META_PARAMS.get("use_rf", False):
-        clf = RandomForestClassifier(**META_PARAMS["rf"])
-        clf.fit(X_tr, y_tr)
-        base["rf"] = clf
-    if META_PARAMS.get("use_mlp", False):
-        clf = MLPClassifier(**META_PARAMS["mlp"])
-        clf.fit(X_tr, y_tr)
-        base["mlp"] = clf
-    return base
+def _stack_preds(base: Dict[str, Any], X: np.ndarray) -> np.ndarray:
+    """Stack probability column(s) of each base learner."""
+    stacks: List[np.ndarray] = []
+    for name, mdl in base.items():
+        proba = mdl.predict_proba(X)
+        if proba.shape[1] == 2:
+            stacks.append(proba[:, 1:2])  # keep 2‑D shape (N,1)
+        else:
+            stacks.append(proba)  # (N, C)
+    return np.concatenate(stacks, axis=1)
 
+# ─────────────────────────────────────────────────────────────────────────
+# helpers – evaluation
+# -----------------------------------------------------------------------
 
-def build_meta_features(base, X):
-    return np.column_stack([m.predict_proba(X)[:, 1] for m in base.values()])
+def _eval_metrics(
+    y_true: np.ndarray, y_prob: np.ndarray, y_pred: np.ndarray
+) -> Dict[str, Any]:
+    """Compute ROC‑AUC (binary or multiclass), weighted‑F1, CM."""
+    if y_prob.shape[1] == 2:  # binary
+        roc = roc_auc_score(y_true, y_prob[:, 1])
+    else:  # multi‑class
+        roc = roc_auc_score(y_true, y_prob, multi_class="ovr")
+    return {
+        "roc_auc": float(roc),
+        "f1": float(f1_score(y_true, y_pred, average="weighted")),
+        "cm": confusion_matrix(y_true, y_pred).tolist(),
+    }
 
+# ─────────────────────────────────────────────────────────────────────────
+# main trainer
+# -----------------------------------------------------------------------
 
-def train_meta_model_from_request(request_data: UpdateIndicatorsData) -> dict:
-    meta_df = prepare_meta_dataset(request_data)
-    feat_cols = [c for c in meta_df.columns if c.startswith("Pred_")]
-    X, y = meta_df[feat_cols], meta_df["Action"]
-    X_tr, X_va, y_tr, y_va = train_test_split(
+def _train_meta_model(req: UpdateIndicatorsData) -> Dict[str, Any]:
+    log.info("▶️  Meta‑training start for %s", req.stock_ticker)
+
+    df = _load_dataset()
+    if "Action" not in df.columns:
+        log.warning("Action column was missing – derived from Return_3d")
+        df["Action"] = _derive_action(df)
+
+    feat_cols = [c for c in df.columns if c.startswith("Pred_")]
+    X, y = df[feat_cols].to_numpy(dtype=np.float32), df["Action"].to_numpy()
+
+    Xtr, Xva, ytr, yva = train_test_split(
         X,
         y,
         test_size=META_PARAMS.get("val_size", 0.2),
         stratify=y,
+        shuffle=True,
         random_state=META_PARAMS.get("random_state", 42),
     )
-    base = train_base_learners(X_tr, y_tr, X_va, y_va)
-    train_meta_X = build_meta_features(base, X_tr)
-    val_meta_X = build_meta_features(base, X_va)
-    meta_clf = LogisticRegression(**META_PARAMS["final_estimator"]).fit(
-        train_meta_X, y_tr
+
+    log.info(
+        "Split done  train=%s  val=%s  classes=%s",
+        Xtr.shape,
+        Xva.shape,
+        np.unique(y, return_counts=True),
     )
-    report = classification_report(y_va, meta_clf.predict(val_meta_X), digits=4)
-    path = META_PARAMS["meta_model_path"]
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    joblib.dump({"base": base, "meta": meta_clf}, path)
-    return {"model_path": path, "val_report": report}
+
+    # ── Train base learners ────────────────────────────────────────────
+    base: Dict[str, Any] = {
+        "lgbm": _train_lgbm(Xtr, ytr, Xva, yva),
+    }
+
+    # ── Train stacking (meta) layer ────────────────────────────────────
+    meta_Xtr = _stack_preds(base, Xtr)
+    meta_Xva = _stack_preds(base, Xva)
+
+    meta = LogisticRegression(
+        C=META_PARAMS.get("meta_C", 1.0),
+        penalty="l2",
+        class_weight="balanced",
+        max_iter=1000,
+        solver="lbfgs",
+    ).fit(meta_Xtr, ytr)
+
+    # ── Evaluate ───────────────────────────────────────────────────────
+    meta_prob = meta.predict_proba(meta_Xva)
+    meta_pred = meta_prob.argmax(axis=1)
+    metrics = _eval_metrics(yva, meta_prob, meta_pred)
+    log.info("Validation ROC‑AUC=%.4f  F1=%.4f", metrics["roc_auc"], metrics["f1"])
+
+    # ── Persist all artefacts ─────────────────────────────────────────
+    model_path = Path(META_PARAMS["meta_model_path"])
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump({"base": base, "meta": meta, "metrics": metrics}, model_path)
+    log.info("✅ meta‑model saved → %s", model_path)
+
+    # ── JSON‑ready response ───────────────────────────────────────────
+    return {
+        "status": "success",
+        "model_path": str(model_path),
+        "metrics": metrics,
+    }
+
+# -----------------------------------------------------------------------
+# FastAPI wrapper
+# -----------------------------------------------------------------------
+
+def train_meta_model_from_request(req: UpdateIndicatorsData):
+    """Endpoint entry‑point (used in routers)."""
+    return _train_meta_model(req)
+
+# -----------------------------------------------------------------------
+# backward‑compat utility: load_meta_model
+# -----------------------------------------------------------------------
+
+def load_meta_model(path: str | Path | None = None):
+    """Load the persisted meta‑model bundle for inference / backtesting."""
+    if path is None:
+        path = META_PARAMS["meta_model_path"]
+    bundle = joblib.load(path)
+    return bundle
