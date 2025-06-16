@@ -7,7 +7,7 @@ import joblib
 
 from backtest import backtester
 from config.optimizations_config import BACKTEST_OPTIMIZATIONS_PARAMS, OPTUNA_PARAMS
-from models.model_meta_trainer import train_meta_model_from_request
+from models.model_meta_trainer import train_meta_model
 from data import data_processing
 from backtest import backtest_tuning
 from models.model_prediction_tuning import run_optuna
@@ -40,14 +40,11 @@ def train(request: UpdateIndicatorsData):
     if request.model_type and request.model_type.upper() == "ALL":
         return {
             "status": "batch",
-            "results": model_prediction_trainer.train_all_base_models(request)
+            "results": model_prediction_trainer.train_all_base_models(request),
         }
 
     # התנהגות קיימת – אימון יעד יחיד
-    return {
-        "status": "single",
-        **model_prediction_trainer.train_single(request)
-    }
+    return {"status": "single", **model_prediction_trainer.train_single(request)}
 
 
 @router.post("/backtest")
@@ -132,7 +129,7 @@ def get_tuning_result():
 @router.post("/train-meta-model", summary="Train the meta-model (BUY/SELL/HOLD AI)")
 async def meta_train_ai(request_data: UpdateIndicatorsData):
     try:
-        result = train_meta_model_from_request(request_data)
+        result = train_meta_model(request_data)
         return {"status": "success", **result}
     except Exception as err:
         logging.exception("Meta model training failed.")

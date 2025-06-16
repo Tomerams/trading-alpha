@@ -6,7 +6,7 @@ PROJECT_SRC = os.path.abspath(os.path.join(THIS_DIR, os.pardir))
 
 META_PARAMS = {
     "meta_model_path": "files/models/meta_action_model.pkl",
-    "base_targets": [ 
+    "base_targets": [
         "Target_Tomorrow",
         "Target_2_Days",
         "Target_3_Days",

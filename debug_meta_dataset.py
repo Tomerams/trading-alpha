@@ -3,12 +3,13 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-path = Path("./src/files/datasets/meta_dataset.pkl")   # הנתיב הקיים אצלך
+path = Path("./src/files/datasets/meta_dataset.pkl")  # הנתיב הקיים אצלך
 df = pd.read_pickle(path)
 
 # אם Action לא קיים – צור אותו בדומה לקוד שלך
 if "Action" not in df.columns:
     from src.models.model_meta_trainer import _derive_action
+
     df["Action"] = _derive_action(df)
 print("\n🧩 feature columns:", [c for c in df.columns if c.startswith("Pred_")])
 
