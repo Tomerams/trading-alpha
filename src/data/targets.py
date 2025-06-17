@@ -22,20 +22,35 @@ def calculate_bars_to_next_turning(prices: np.ndarray, order: int):
     return bars_to_max, bars_to_min
 
 
+def _pct_change(a: pd.Series, shift: int) -> pd.Series:
+    """אחוז שינוי קדימה/אחורה – חוסם division-by-zero."""
+    return (a.shift(shift) - a) / a.replace(0, np.nan)
+
+
 def calculate_targets(df: pd.DataFrame) -> pd.DataFrame:
-    for tgt in TRAIN_TARGETS_PARAMS.get("shift_targets", []):
-        name, shift = tgt["name"], tgt["shift"]
-        df[f"Target_{name}"] = (df["Close"].shift(shift) - df["Close"]) / df["Close"]
+    """
+    מוסיף 11 עמודות Target ל-DataFrame:
+    • Target_±N_Days                       – אחוז שינוי עתידי
+    • NextLocalMax/MinPct                  – כמה אחוז עד השיא/שפל המקומי
+    • BarsToNextLocalMax/Min  (log1p)      – כמה ברים קדימה עד השיא/שפל
+    """
+    close = df["Close"]
 
-    window = TRAIN_TARGETS_PARAMS.get("extrema_window", 10)
-    highs = df["Close"].rolling(window).max().shift(-window)
-    lows = df["Close"].rolling(window).min().shift(-window)
-    df["NextLocalMaxPct"] = (highs - df["Close"]) / df["Close"]
-    df["NextLocalMinPct"] = (lows - df["Close"]) / df["Close"]
+    # 1)  Shifts (Tomorrow, 2_Days, …)
+    for s in TRAIN_TARGETS_PARAMS["shift_targets"]:
+        df[f"Target_{s['name']}"] = _pct_change(close, s["shift"])
 
-    prices = df["Close"].values
-    bars_to_max, bars_to_min = calculate_bars_to_next_turning(prices, order=window)
-    df["BarsToNextLocalMax"] = bars_to_max
-    df["BarsToNextLocalMin"] = bars_to_min
+    # 2)  אחוזים לשיא/שפל מקומי בחלון 'extrema_window'
+    win = TRAIN_TARGETS_PARAMS.get("extrema_window", 10)
+    highs = close.rolling(win).max().shift(-win)
+    lows  = close.rolling(win).min().shift(-win)
+    df["NextLocalMaxPct"] = (highs - close) / close
+    df["NextLocalMinPct"] = (lows  - close) / close
 
-    return df
+    # 3)  כמות הבר-ים עד השיא/שפל המקומי  →  log1p-normalize
+    bars_max, bars_min = calculate_bars_to_next_turning(close.values, order=win)
+    df["BarsToNextLocalMax"] = np.log1p(bars_max)  # log1p: log(1+x)
+    df["BarsToNextLocalMin"] = np.log1p(bars_min)
+
+    # טיפ קטן: אם יש NaN בסוף הסדרה – ניפטר
+    return df.dropna().reset_index(drop=True)

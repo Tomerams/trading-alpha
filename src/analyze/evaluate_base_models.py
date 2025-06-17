@@ -5,6 +5,7 @@ Prints regression or classification metrics per target.
 """
 from datetime import date, timedelta
 from routers.routers_entities import UpdateIndicatorsData
+from sklearn.metrics import accuracy_score
 
 import numpy as np, pandas as pd, joblib, torch
 from pathlib import Path
@@ -74,3 +75,13 @@ for tgt in BASE_TARGETS:
         f1   = f1_score(y_true, (y_pred>0).astype(int), average="weighted")
         acc  = accuracy_score(y_true, (y_pred>0).astype(int))
         print(f"{tgt:<22}  AUC={auc:.3f}  F1={f1:.3f}  Acc={acc:.3f}")
+
+
+def dir_acc(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    """Accuracy of correctly guessing the sign (↑ / ↓ / 0)."""
+    return accuracy_score(np.sign(y_true), np.sign(y_pred))
+
+for tgt in BASE_TARGETS:
+    y_true = df_raw[tgt].iloc[SEQ_LEN:].values
+    y_pred = load_predict(tgt, df_raw)
+    print(f"{tgt:<15} DirAcc={dir_acc(y_true, y_pred):.3f}")

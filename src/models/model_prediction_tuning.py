@@ -1,128 +1,139 @@
-import optuna
-import joblib
-from sklearn.preprocessing import StandardScaler
-from torch.utils.data import DataLoader, TensorDataset
-import torch
-import torch.nn as nn
+#  PYTHONPATH=./src python3 src/models/model_prediction_tuning.py
 
-from config.optimizations_config import OPTUNA_PARAMS
+"""
+Optuna tuning *פר-טארגט*  – v1 (June 2025)
+⟶ מריץ Optuna  לכל Target בסיסי,  שומר best-params כ-JSON נפרד.
+   תוצאה: 11 קבצי  files/models/best_params_<Target>.json
+   אותם ניתן לטעון לפני train_single / train_all_base_models.
+
+▪ Directional-Accuracy (thr 5 %) היא מטריקת האופטימיזציה.
+▪ משותפת הכנת DataFrame / Scaler, כדי לחסוך זמן.
+▪ ניתן לשנות n_trials / timeout ב-OPTUNA_PARAMS.
+"""
+from __future__ import annotations
+import json, time, joblib, optuna, numpy as np, torch
+from pathlib import Path
+from torch.utils.data import TensorDataset, DataLoader
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score
+
 from config.model_trainer_config import MODEL_TRAINER_PARAMS, TRAIN_TARGETS_PARAMS
+from config.optimizations_config import OPTUNA_PARAMS
 from data.data_processing import get_indicators_data
 from models.model_utilities import get_model, time_based_split, create_sequences
-from pathlib import Path
+from routers.routers_entities import UpdateIndicatorsData
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# ───────────────────────– DirAcc helper ──────────────────────────────
 
-def _prepare_loaders(request_data, seq_len, batch_size):
-    df = get_indicators_data(request_data)
-    train_df, val_df, _ = time_based_split(df)
-    feature_cols = [
-        c
-        for c in df.columns
-        if c not in ("Date", "Close", *TRAIN_TARGETS_PARAMS["target_cols"])
-    ]
-    X_tr, y_tr = create_sequences(
-        train_df, feature_cols, TRAIN_TARGETS_PARAMS["target_cols"], seq_len
-    )
-    X_val, y_val = create_sequences(
-        val_df, feature_cols, TRAIN_TARGETS_PARAMS["target_cols"], seq_len
-    )
+def dir_acc(y_true: np.ndarray, y_pred: np.ndarray, thr: float = 0.05) -> float:
+    signal = np.where(y_pred > thr, 1, np.where(y_pred < -thr, -1, 0))
+    return accuracy_score(np.sign(y_true), signal)
+
+# ───────────────────── Prepare shared tensors once ───────────────────
+
+def prepare_shared(req, seq_len):
+    df = get_indicators_data(req).dropna().reset_index(drop=True)
+    tr_df, va_df, _ = time_based_split(df)
+    feats = [c for c in df.columns if c not in {"Date", *TRAIN_TARGETS_PARAMS["target_cols"]}]
+
+    # full feature windows – same for all targets
+    X_tr, _ = create_sequences(tr_df, feats, [TRAIN_TARGETS_PARAMS["target_cols"][0]], seq_len)
+    X_va, _ = create_sequences(va_df, feats, [TRAIN_TARGETS_PARAMS["target_cols"][0]], seq_len)
 
     scaler = StandardScaler().fit(X_tr.reshape(-1, X_tr.shape[-1]))
     X_tr = scaler.transform(X_tr.reshape(-1, X_tr.shape[-1])).reshape(X_tr.shape)
-    X_val = scaler.transform(X_val.reshape(-1, X_val.shape[-1])).reshape(X_val.shape)
+    X_va = scaler.transform(X_va.reshape(-1, X_va.shape[-1])).reshape(X_va.shape)
 
-    train_ds = TensorDataset(
-        torch.from_numpy(X_tr).float(), torch.from_numpy(y_tr).float()
-    )
-    val_ds = TensorDataset(
-        torch.from_numpy(X_val).float(), torch.from_numpy(y_val).float()
-    )
+    return X_tr, X_va, feats
 
-    return (
-        DataLoader(train_ds, batch_size, shuffle=True),
-        DataLoader(val_ds, batch_size, shuffle=False),
-    )
+REQ = UpdateIndicatorsData(ticker="QQQ", start_date="2005-01-01", end_date="2025-06-17", indicators=[])
+SEQ_LEN = MODEL_TRAINER_PARAMS["seq_len"]
+X_TR_SHARED, X_VA_SHARED, FEATURE_COLS = prepare_shared(REQ, SEQ_LEN)
+FEAT_DIM = X_TR_SHARED.shape[-1]
 
+# create directory for outputs
+Path("files/models").mkdir(parents=True, exist_ok=True)
 
-def objective(trial, request_data):
-    # 1) sample hyperparameters
-    #   – num_heads chosen from allowable set
-    num_heads = trial.suggest_categorical("num_heads", [1, 2, 4, 8])
+# ───────────────────────── Objective per target ──────────────────────
 
-    #   – hidden_size as multiple of num_heads
-    multiplier = trial.suggest_int("hidden_mult", 1, 8)
-    hidden_size = num_heads * multiplier
+def build_objective(y_tr, y_va):
+    tr_ds = TensorDataset(torch.tensor(X_TR_SHARED), torch.tensor(y_tr))
+    va_ds = TensorDataset(torch.tensor(X_VA_SHARED), torch.tensor(y_va))
+    tr_loader = DataLoader(tr_ds, batch_size=OPTUNA_PARAMS["batch_size"], shuffle=True)
+    va_loader = DataLoader(va_ds, batch_size=OPTUNA_PARAMS["batch_size"]*2)
 
-    num_layers = trial.suggest_int("num_layers", 1, 4)
-    dropout_rate = trial.suggest_float("dropout_rate", 0.0, 0.5)
-    lr = trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True)
-    seq_len = trial.suggest_int("sequence_length", 5, 30)
+    def objective(trial: optuna.Trial) -> float:
+        hid = trial.suggest_categorical("hidden", [64, 96, 128, 192, 256])
+        nl  = trial.suggest_int("n_layers", 2, 4)
+        dr  = trial.suggest_float("dropout", 0.0, 0.3, step=0.05)
+        lr  = trial.suggest_float("lr", 5e-4, 3e-3, log=True)
 
-    # 2) build data loaders
-    train_loader, val_loader = _prepare_loaders(
-        request_data, seq_len, OPTUNA_PARAMS["batch_size"]
-    )
+        model = get_model(FEAT_DIM, MODEL_TRAINER_PARAMS["model_type"], 1,  # output_size=1
+                          hidden_size=hid, num_layers=nl, dropout=dr).to(DEVICE)
+        opt   = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-2)
+        sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=OPTUNA_PARAMS.get("max_epochs", 25))
+        loss_fn = torch.nn.MSELoss()
 
-    # 3) instantiate model (pass num_heads into MODEL_PARAMS or directly to get_model)
-    model = get_model(
-        input_size=train_loader.dataset.tensors[0].shape[-1],
-        model_type=MODEL_TRAINER_PARAMS["model_type"],
-        output_size=len(TRAIN_TARGETS_PARAMS["target_cols"]),
-        hidden_size=hidden_size,
-        num_layers=num_layers,
-        dropout=dropout_rate,
-        num_heads=num_heads,
-    ).to(device)
+        best_acc, patience = 0.0, 0
+        for ep in range(1, OPTUNA_PARAMS["max_epochs"]+1):
+            model.train()
+            for xb, yb in tr_loader:
+                xb, yb = xb.to(DEVICE).float(), yb.to(DEVICE).float()
+                opt.zero_grad(set_to_none=True)
+                loss_fn(model(xb), yb).backward(); opt.step()
+            sched.step()
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    loss_fn = nn.MSELoss()
+            # validation DirAcc
+            model.eval(); preds = []
+            with torch.no_grad():
+                for xb, _ in va_loader:
+                    preds.append(model(xb.to(DEVICE).float()).cpu())
+            acc = dir_acc(y_va.squeeze(), torch.cat(preds).squeeze().numpy())
 
-    best_val = float("inf")
-    epochs_no_improve = 0
+            trial.report(acc, ep)
+            if trial.should_prune():
+                raise optuna.exceptions.TrialPruned()
 
-    for epoch in range(OPTUNA_PARAMS["max_epochs"]):
-        model.train()
-        for xb, yb in train_loader:
-            xb, yb = xb.to(device), yb.to(device)
-            optimizer.zero_grad()
-            loss_fn(model(xb), yb).backward()
-            optimizer.step()
+            if acc > best_acc + 1e-4: best_acc, patience = acc, 0
+            else:
+                patience += 1
+                if patience >= OPTUNA_PARAMS["early_stopping_patience"]: break
 
-        model.eval()
-        val_loss = sum(
-            loss_fn(model(xb.to(device)), yb.to(device)).item() for xb, yb in val_loader
-        ) / len(val_loader)
+        return 1.0 - best_acc   # minimize
 
-        trial.report(val_loss, epoch)
-        if trial.should_prune():
-            raise optuna.exceptions.TrialPruned()
+    return objective
 
-        if val_loss < best_val:
-            best_val = val_loss
-            epochs_no_improve = 0
-        else:
-            epochs_no_improve += 1
-            if epochs_no_improve >= OPTUNA_PARAMS["early_stopping_patience"]:
-                break
+# ───────────────────────── Loop over targets ─────────────────────────
 
-    return best_val
+def tune_all_targets():
+    results = {}
+    for tgt in TRAIN_TARGETS_PARAMS["target_cols"]:
+        print(f"\n── Optuna tuning for {tgt} ─────────────────────────────────")
+        # build target arrays
+        df = get_indicators_data(REQ).dropna().reset_index(drop=True)
+        tr_df, va_df, _ = time_based_split(df)
+        _, y_tr = create_sequences(tr_df, FEATURE_COLS, [tgt], SEQ_LEN)
+        _, y_va = create_sequences(va_df, FEATURE_COLS, [tgt], SEQ_LEN)
 
+        study = optuna.create_study(direction="minimize", pruner=optuna.pruners.MedianPruner(n_warmup_steps=3))
+        study.optimize(build_objective(y_tr.astype(np.float32), y_va.astype(np.float32)),
+                       n_trials=OPTUNA_PARAMS["n_trials"],
+                       timeout=OPTUNA_PARAMS.get("timeout_seconds"))
 
-def run_optuna(request_data):
-    study = optuna.create_study(
-        direction="minimize",
-        pruner=optuna.pruners.MedianPruner(
-            n_warmup_steps=OPTUNA_PARAMS["warmup_steps"]
-        ),
-    )
-    study.optimize(
-        lambda t: objective(t, request_data),
-        n_trials=OPTUNA_PARAMS["n_trials"],
-        timeout=OPTUNA_PARAMS["timeout_seconds"],
-    )
-    # persist for later inspection
-    Path("files/models").mkdir(parents=True, exist_ok=True)
-    joblib.dump(study, "files/models/optuna_study.pkl")
-    return study
+        best_params = study.best_params
+        best_acc    = 1.0 - study.best_value
+        print(f"🏆  {tgt}: Best DirAcc = {best_acc:.3f}  |  params = {best_params}")
+
+        # persist
+        fname = Path("files/models") / f"best_params_{tgt}.json"
+        fname.write_text(json.dumps(best_params, indent=2))
+        joblib.dump(study, fname.with_suffix(".pkl"))
+        results[tgt] = {"dir_acc": best_acc, **best_params}
+    return results
+
+if __name__ == "__main__":
+    summary = tune_all_targets()
+    Path("files/models/optuna_summary.json").write_text(json.dumps(summary, indent=2))
+    print("\n🔸 All targets tuned – summary saved to optuna_summary.json")
