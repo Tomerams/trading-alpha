@@ -35,4 +35,13 @@ META_PARAMS = {
         "verbosity": -1,
         "force_col_wise": True,
     },
-}
+    "label_cols": [
+        "Target_Tomorrow",
+        "Target_2_Days",
+        "Target_3_Days",
+        "Target_5_Days",
+        "Target_7_Days",
+        "Target_8_Days",
+        "Target_13_Days",
+        "Target_21_Days",
+    ],}

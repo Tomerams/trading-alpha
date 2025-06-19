@@ -1,87 +1,106 @@
-#PYTHONPATH=./src python3 src/analyze/evaluate_base_models.py
+#  PYTHONPATH=./src  python3  src/analyze/evaluate_base_models.py
 """
 Evaluate every base-model *against its own target column*.
-Prints regression or classification metrics per target.
+מדפיס MAE / RMSE / R² לכל טארגט +  Dir-Acc (סימן) לטווחי 1-5 ימים.
 """
 from datetime import date, timedelta
-from routers.routers_entities import UpdateIndicatorsData
-from sklearn.metrics import accuracy_score
-
-import numpy as np, pandas as pd, joblib, torch
 from pathlib import Path
-from sklearn.metrics import (
-    roc_auc_score, f1_score, accuracy_score,
-    mean_absolute_error, mean_squared_error, r2_score
-)
+import json, joblib, numpy as np, pandas as pd, torch
+from sklearn.metrics import (mean_absolute_error, mean_squared_error, r2_score,
+                             accuracy_score)
 
 from config.meta_data_config import META_PARAMS
 from data.data_processing import get_indicators_data
 from models.model_utilities import get_model
+from routers.routers_entities import UpdateIndicatorsData
 
+# ── קבועים ────────────────────────────────────────────────────────────
 TICKER       = "QQQ"
-BASE_TARGETS = META_PARAMS["base_targets"]
+BASE_TARGETS = META_PARAMS["base_targets"]           # 11 targets
 SEQ_LEN      = META_PARAMS.get("seq_len", 60)
 MODEL_DIR    = Path("src/files/models")
 
+# ──  DF עם כל הפיצ'רים והטארגטים ─────────────────────────────────────
 req = UpdateIndicatorsData(
-    ticker="QQQ",
-    start_date=(date.today() - timedelta(days=365*20)).isoformat(),
-    end_date=date.today().isoformat(),
-    indicators=[]          # השאר ריק אם אינך צריך חישוב נוסף
+    ticker      = TICKER,
+    start_date  = (date.today() - timedelta(days=365*20)).isoformat(),
+    end_date    = date.today().isoformat(),
+    indicators  = [],
 )
-
 df_raw = get_indicators_data(req).dropna().reset_index(drop=True)
 
-def load_predict(target: str, df: pd.DataFrame) -> np.ndarray:
-    """Return model predictions (scalar or Δprob BUY-SELL) for given target."""
-    stem       = MODEL_DIR / f"{TICKER}_{target}"
-    chkpt      = torch.load(stem.with_suffix(".pt"), map_location="cpu")
-    feats      = joblib.load(stem.parent / f"{stem.name}_features.pkl")
-    scaler     = joblib.load(stem.parent / f"{stem.name}_scaler.pkl")
-    out_dim    = chkpt["net.head.weight"].shape[0]
+# ───────────────────────────────────────────────────────────────────────
+def _guess_arch_params(chkpt: dict) -> dict:
+    """Fallback – שולף hidden_size / num_layers מה-state-dict כאשר
+       קובץ-הייפרים *.json* לא נמצא."""
+    hidden = chkpt["net.tcn.network.0.conv1.bias"].shape[0]
+    # כל בלוק TCN מוסיף שני קונבולוציות; נחפש כמה Layers מופיעים
+    n_layers = max(int(k.split('.')[3]) for k in chkpt if k.startswith("net.tcn.network.")) + 1
+    return {"hidden_size": hidden, "num_layers": n_layers}
 
-    model = get_model(len(feats), "TransformerTCN", out_dim)
-    model.load_state_dict(chkpt)
+# ───────────────────────────────────────────────────────────────────────
+def _load_predict(target: str, df: pd.DataFrame) -> np.ndarray:
+    """חזוי scalar אחד לכל שורה – עבור טארגט מסוים."""
+    stem   = MODEL_DIR / f"{TICKER}_{target}"
+    chkpt  = torch.load(stem.with_suffix(".pt"), map_location="cpu")
+    feats  = joblib.load(stem.parent / f"{stem.name}_features.pkl")
+    scaler = joblib.load(stem.parent / f"{stem.name}_scaler.pkl")
+    out_dim = chkpt["net.head.weight"].shape[0]
+
+    # -------- hyper-params (json או Fallback) -------------------------
+    hp = {}
+    hp_file = stem.with_suffix(".json")
+    if hp_file.exists():
+        hp = json.loads(hp_file.read_text())
+        hp.pop("lr", None)                       # לא דרוש לאינפרנס
+        # map legacy names → get_model kwargs
+        if "hidden"   in hp: hp["hidden_size"] = hp.pop("hidden")
+        if "n_layers" in hp: hp["num_layers"]  = hp.pop("n_layers")
+    else:
+        hp = _guess_arch_params(chkpt)
+
+    # -------- מודל -----------------------------------------------------
+    model = get_model(len(feats), "TransformerTCN", out_dim, **hp)
+    model.load_state_dict(chkpt, strict=False)
     model.eval()
 
+    # -------- build tensor --------------------------------------------
     X = np.lib.stride_tricks.sliding_window_view(
-        df[feats].values, (SEQ_LEN, len(feats))
-    )[:-1]
-    X = X.reshape(X.shape[0], SEQ_LEN, -1)
-    X = scaler.transform(X.reshape(-1, X.shape[-1])).reshape(X.shape)
+            df[feats].values, (SEQ_LEN, len(feats))
+        )[:-1]                                   # (n, 1, 1, 60, F)
+    X = X.reshape(X.shape[0], SEQ_LEN, -1)       # (n, 60, F)
+    X = scaler.transform(
+            X.reshape(-1, X.shape[-1])
+        ).reshape(-1, SEQ_LEN, len(feats)).astype(np.float32)
 
     with torch.no_grad():
-        out = model(torch.tensor(X, dtype=torch.float32)).numpy()  # (n, out_dim)
+        pred = model(torch.tensor(X)).numpy()    # (n, out_dim)
 
-    # אם המודל הוא 3-class – נחזיר Δprobability (BUY-SELL); אחרת scalar
-    if out.shape[1] == 3:
-        return out[:, 2] - out[:, 0]      # BUY – SELL
-    return out[:, 0]                      # scalar יחיד
+    return pred.squeeze() if pred.shape[1] == 1 else pred[:, 0]
 
-print("\nTarget evaluation")
-print("-" * 60)
+# ──  metric helpers ───────────────────────────────────────────────────
+def _rmse(y, yhat):
+    try:
+        return mean_squared_error(y, yhat, squared=False)
+    except TypeError:                            # sklearn<0.22
+        return mean_squared_error(y, yhat) ** 0.5
+
+def dir_acc(y, yhat, thr=0.0):
+    return accuracy_score(np.sign(y), np.sign(yhat - thr))
+
+# ──  Run evaluation ───────────────────────────────────────────────────
+print("\nTarget evaluation\n" + "-"*60)
 for tgt in BASE_TARGETS:
     y_true = df_raw[tgt].iloc[SEQ_LEN:].values
-    y_pred = load_predict(tgt, df_raw)
+    y_pred = _load_predict(tgt, df_raw)
 
-    # Regression or classification?
-    if np.issubdtype(y_true.dtype, np.floating):
-        mae  = mean_absolute_error(y_true, y_pred)
-        rmse = mean_squared_error(y_true, y_pred) ** 0.5
-        r2   = r2_score(y_true, y_pred)
-        print(f"{tgt:<22}  MAE={mae:.4f}  RMSE={rmse:.4f}  R²={r2:.3f}")
-    else:  # assume int labels 0/1/2
-        auc  = roc_auc_score((y_true==2).astype(int), y_pred)  # BUY-OVR
-        f1   = f1_score(y_true, (y_pred>0).astype(int), average="weighted")
-        acc  = accuracy_score(y_true, (y_pred>0).astype(int))
-        print(f"{tgt:<22}  AUC={auc:.3f}  F1={f1:.3f}  Acc={acc:.3f}")
+    mae  = mean_absolute_error(y_true, y_pred)
+    rmse = _rmse(y_true, y_pred)
+    r2   = r2_score(y_true, y_pred)
+    print(f"{tgt:<22}  MAE={mae:.4f}  RMSE={rmse:.4f}  R²={r2:.3f}")
 
-
-def dir_acc(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    """Accuracy of correctly guessing the sign (↑ / ↓ / 0)."""
-    return accuracy_score(np.sign(y_true), np.sign(y_pred))
-
-for tgt in BASE_TARGETS:
+print("\nDirectional-Accuracy (sign)\n" + "-"*60)
+for tgt in BASE_TARGETS[:5]:          # 1-5 day horizons
     y_true = df_raw[tgt].iloc[SEQ_LEN:].values
-    y_pred = load_predict(tgt, df_raw)
-    print(f"{tgt:<15} DirAcc={dir_acc(y_true, y_pred):.3f}")
+    y_pred = _load_predict(tgt, df_raw)
+    print(f"{tgt:<22}  {dir_acc(y_true, y_pred):.3f}")

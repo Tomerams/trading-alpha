@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from data.action_labels import make_action_label_quantile
+from data.action_labels import make_action_label_clean
 from data.features import calculate_features
 from data.targets import calculate_targets
 from routers.routers_entities import UpdateIndicatorsData
@@ -19,8 +19,12 @@ def get_indicators_data(request_data: UpdateIndicatorsData) -> pd.DataFrame:
 
     df = calculate_features(df)
     df = calculate_targets(df)
-    df["action_label"] = make_action_label_quantile(df, horizon="Target_3_Days", q=0.20)
-
+    df["action_label"] = make_action_label_clean(
+            df,
+            up_thr = 0.015,          # BUY אם יש “בשר” של -1.5 %
+            dn_thr = -0.015,         # SELL אם ירידה ≥-1.5 %
+            atr_mult = 1.0           # וגם Δ ≥ ATR ממוצע
+    )    
     numeric = df.select_dtypes(include=[np.number]).columns.tolist()
     exclude = get_exclude_from_scaling()
     to_scale = [c for c in numeric if c not in exclude]

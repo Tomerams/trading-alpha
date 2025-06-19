@@ -17,7 +17,7 @@ def get_exclude_from_scaling() -> set:
     Build and return a set of column names to exclude from feature scaling,
     based on MODEL_PARAMS and enums from data.features.
     """
-    base = ["Date", "Close"]
+    base = ["Date", "Close", "action_label"]
     # shift-based targets
     targets = TRAIN_TARGETS_PARAMS.get("target_cols", [])
     # pattern features
