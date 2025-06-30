@@ -10,7 +10,8 @@ from config.optimizations_config import BACKTEST_OPTIMIZATIONS_PARAMS, OPTUNA_PA
 from models.model_meta_trainer import train_meta_model
 from data import data_processing
 from backtest import backtest_tuning
-#from models.model_prediction_tuning import run_optuna
+
+# from models.model_prediction_tuning import run_optuna
 from models import model_prediction_trainer
 from routers.routers_entities import UpdateIndicatorsData
 from visualization.visualization_plot import generate_trade_plot
@@ -40,14 +41,11 @@ def train(request: UpdateIndicatorsData):
     if request.model_type and request.model_type.upper() == "ALL":
         return {
             "status": "batch",
-            "results": model_prediction_trainer.train_all_base_models(request)
+            "results": model_prediction_trainer.train_all_base_models(request),
         }
 
     # התנהגות קיימת – אימון יעד יחיד
-    return {
-        "status": "single",
-        **model_prediction_trainer.train_single(request)
-    }
+    return {"status": "single", **model_prediction_trainer.train_single(request)}
 
 
 @router.post("/backtest")
@@ -110,7 +108,7 @@ async def tune_hyperparams(
     Launch Optuna sweep in the background and return immediately.
     """
     # schedule the long-running job
-    #background_tasks.add_task(run_optuna, request_data)
+    # background_tasks.add_task(run_optuna, request_data)
     return JSONResponse(
         {"status": "started", "n_trials": OPTUNA_PARAMS["n_trials"]}, status_code=202
     )

@@ -12,3 +12,4 @@ class UpdateIndicatorsData(BaseModel):
     )
     debug: bool = False
     model_type: str = "ALL"
+    scale: bool = True

@@ -43,9 +43,9 @@ def calculate_targets(df: pd.DataFrame) -> pd.DataFrame:
     # 2)  אחוזים לשיא/שפל מקומי בחלון 'extrema_window'
     win = TRAIN_TARGETS_PARAMS.get("extrema_window", 10)
     highs = close.rolling(win).max().shift(-win)
-    lows  = close.rolling(win).min().shift(-win)
+    lows = close.rolling(win).min().shift(-win)
     df["NextLocalMaxPct"] = (highs - close) / close
-    df["NextLocalMinPct"] = (lows  - close) / close
+    df["NextLocalMinPct"] = (lows - close) / close
 
     # 3)  כמות הבר-ים עד השיא/שפל המקומי  →  log1p-normalize
     bars_max, bars_min = calculate_bars_to_next_turning(close.values, order=win)

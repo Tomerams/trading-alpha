@@ -1,33 +1,28 @@
+# ───────────────────────────────────────────────────────────────
+# src/models/model_prediction_trainer.py   2025-06-20  V4-fixε
+# ───────────────────────────────────────────────────────────────
 """
-Model Prediction Trainer – v3-fast ★★ FIX 3  (June 2025)
-───────────────────────────────────────────────────────────
-• Hyper-params גלובליים + ייעודיים לכל Target  (model_kwargs_target_specific)
-• תמיכה ב-learning-rate ייחודי לטארגט
-• Early-Stopping / CosineLR נשלפים מה-config
-• מימוש train_all_base_models / train_single / train_model
+Trainer – walk-forward, log-return targets.
+• תיקון: מניעת ±inf בלוג-ריטרן + guard על nan/inf ב-validation.
 """
 from __future__ import annotations
-
-# ─── Std-lib & typing
-import logging, os
+import logging, os, json, time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Tuple
 
-# ─── Third-party
-import joblib, numpy as np, torch
+import numpy as np, torch, joblib
 from numpy.lib.stride_tricks import sliding_window_view
 from sklearn.preprocessing import StandardScaler
-from torch.utils.data import TensorDataset, DataLoader
-
-# ─── Project imports
+from torch.utils.data import DataLoader, TensorDataset
+import pandas as pd
 from config.meta_data_config import META_PARAMS
 from config.model_trainer_config import MODEL_TRAINER_PARAMS, TRAIN_TARGETS_PARAMS
 from data.data_processing import get_indicators_data
 from models.model_utilities import get_model
 from routers.routers_entities import UpdateIndicatorsData
 
-# ─────────────────── Logging ───────────────────
+# ── logging ──────────────────────────────────────────────────
 log = logging.getLogger("model_prediction_trainer")
 if not log.handlers:
     h = logging.StreamHandler()
@@ -35,212 +30,199 @@ if not log.handlers:
     log.addHandler(h)
 log.setLevel(logging.INFO)
 
-# ───────────────── Config shortcuts ─────────────
-SEQ_LEN      = MODEL_TRAINER_PARAMS["seq_len"]
-TRAIN_RATIO  = MODEL_TRAINER_PARAMS.get("train_ratio", 0.8)
-BATCH_SIZE   = MODEL_TRAINER_PARAMS.get("batch_size", 256)
-EPOCHS       = MODEL_TRAINER_PARAMS.get("epochs", 30)
-PATIENCE     = MODEL_TRAINER_PARAMS.get("patience", 6)
-DEFAULT_LR   = MODEL_TRAINER_PARAMS.get("lr", 1e-3)
-MODEL_TYPE   = MODEL_TRAINER_PARAMS["model_type"].strip()
-
+# ── config shortcuts ────────────────────────────────────────
+SEQ_LEN = MODEL_TRAINER_PARAMS["seq_len"]
+BATCH_SIZE = MODEL_TRAINER_PARAMS.get("batch_size", 256)
+EPOCHS = MODEL_TRAINER_PARAMS.get("epochs", 30)
+PATIENCE = MODEL_TRAINER_PARAMS.get("patience", 6)
+DEFAULT_LR = MODEL_TRAINER_PARAMS.get("lr", 1e-3)
+MODEL_TYPE = MODEL_TRAINER_PARAMS["model_type"].strip()
+WEIGHT_DECAY = MODEL_TRAINER_PARAMS.get("weight_decay", 1e-2)
 GLOBAL_KWARGS = MODEL_TRAINER_PARAMS.get("model_kwargs", {})
-TARGET_SPECIFIC: dict[str, dict[str, Any]] = (
-    MODEL_TRAINER_PARAMS.get("model_kwargs_target_specific", {})
+TARGET_SPEC: dict[str, dict[str, Any]] = MODEL_TRAINER_PARAMS.get(
+    "model_kwargs_target_specific", {}
 )
+WINDOW_YEARS = MODEL_TRAINER_PARAMS.get("walkforward_years", 2)
 
-EXPLICIT_CLASS_TARGETS: set[str] = set()   # הוסף אם יש Targets קטגוריאליים קבועים
-
-# ───────────── Utility helpers ─────────────
-def _merge_params(target: str) -> dict[str, Any]:
-    """מאחד kwargs גלובליים + ייעודיים לטארגט."""
-    merged = GLOBAL_KWARGS.copy()
-    merged.update(TARGET_SPECIFIC.get(target, {}))
-    return merged
+EXPLICIT_CLASS_TARGETS: set[str] = set()  # (add if any)
 
 
-def _is_classification(y: np.ndarray, tgt: str) -> bool:
-    if tgt in EXPLICIT_CLASS_TARGETS:
-        return True
-    if not np.issubdtype(y.dtype, np.integer):
-        return False
-    uniq = np.unique(y)
-    return uniq.min() >= 0 and uniq.max() <= 2 and len(uniq) <= 3
+# ── helpers ─────────────────────────────────────────────────
+def _merge_hp(tgt):
+    hp = GLOBAL_KWARGS.copy()
+    hp.update(TARGET_SPEC.get(tgt, {}))
+    return hp
 
 
-def _class_weights(y: np.ndarray) -> torch.Tensor:
-    counts = np.bincount(y.flatten().astype(int), minlength=3) + 1
-    return torch.tensor(len(y) / counts, dtype=torch.float32)
+def _is_cls(y, t):
+    return t in EXPLICIT_CLASS_TARGETS or (
+        np.issubdtype(y.dtype, int) and np.unique(y).max() <= 2
+    )
 
 
-def _save(model, scaler, feats, *, ticker: str, target: str) -> None:
+def _class_w3(y):
+    cnt = np.bincount(y.flatten().astype(int), minlength=3) + 1
+    return torch.tensor(len(y) / cnt, dtype=torch.float32)
+
+
+def _save(net, sc, feats, tick, tgt, hp):
     out = Path("files/models")
     out.mkdir(parents=True, exist_ok=True)
-    torch.save(model.state_dict(), out / f"{ticker}_{target}.pt")
-    joblib.dump(scaler, out / f"{ticker}_{target}_scaler.pkl")
-    joblib.dump(feats,  out / f"{ticker}_{target}_features.pkl")
+    torch.save(net.state_dict(), out / f"{tick}_{tgt}.pt")
+    joblib.dump(sc, out / f"{tick}_{tgt}_scaler.pkl")
+    joblib.dump(feats, out / f"{tick}_{tgt}_features.pkl")
+    (out / f"{tick}_{tgt}.json").write_text(json.dumps(hp, indent=2))
 
-# ───────────── Data prep (shared) ─────────────
-def _prepare_shared(req: UpdateIndicatorsData):
-    df      = get_indicators_data(req).dropna().reset_index(drop=True)
-    t_cols  = TRAIN_TARGETS_PARAMS["target_cols"]
-    EXCLUDE = {"Date", "action_label"}.union(t_cols)
-    f_cols  = [c for c in df.columns if c not in EXCLUDE]
 
-    X = sliding_window_view(df[f_cols].values, (SEQ_LEN, len(f_cols)))[:-1]
+# ───────────────── data prep & walk-forward ─────────────────
+def _log_return(s: np.ndarray) -> np.ndarray:
+    """safe log-return: ln(1+Δ%), clip למניעת ‎-inf/+inf"""
+    s = np.log1p(pd.Series(s).pct_change().clip(lower=-0.99)).to_numpy()
+    return np.nan_to_num(s, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def _prepare(req: UpdateIndicatorsData) -> Tuple[list, list]:
+    import pandas as pd
+
+    df = get_indicators_data(req).dropna().reset_index(drop=True)
+    tcols = TRAIN_TARGETS_PARAMS["target_cols"]
+    fcols = [c for c in df.columns if c not in set(tcols) | {"Date"}]
+
+    # convert targets → log-return
+    for c in tcols:
+        df[c] = _log_return(df[c].values)
+
+    X = sliding_window_view(df[fcols].values, (SEQ_LEN, len(fcols)))[:-1]
     X = X.reshape(X.shape[0], SEQ_LEN, -1)
-    split      = int(len(X) * TRAIN_RATIO)
-    X_tr, X_va = X[:split], X[split:]
 
-    scaler = StandardScaler().fit(X_tr.reshape(-1, X_tr.shape[-1]))
-    X_tr   = scaler.transform(X_tr.reshape(-1, X_tr.shape[-1])).reshape(X_tr.shape)
-    X_va   = scaler.transform(X_va.reshape(-1, X_va.shape[-1])).reshape(X_va.shape)
+    yrs_per_bar = 252
+    win = WINDOW_YEARS * yrs_per_bar
+    splits = [(i, i + win) for i in range(0, len(X) - win, win)]
+    if not splits:
+        splits = [(0, len(X))]
 
-    y      = df[t_cols].iloc[SEQ_LEN:].values.astype(np.float32)
-    y_tr, y_va = y[:split], y[split:]
-    return X_tr, y_tr, X_va, y_va, f_cols, scaler
+    y = df[tcols].iloc[SEQ_LEN:].values.astype(np.float32)
+    return [(X[a:b], y[a:b]) for a, b in splits], fcols
 
-# ───────────── Train a single network ─────────────
-def _fit(
-    arch: str,
-    feat_dim: int,
-    out_dim: int,
-    X_tr,
-    y_tr,
-    X_va,
-    y_va,
-    hp: dict[str, Any],
-):
+
+# ───────────────────────── train core ───────────────────────
+def _fit(X_tr, y_tr, X_va, y_va, feat_dim, out_dim, hp, tag):
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    lr  = hp.pop("lr", DEFAULT_LR)
-    net = get_model(feat_dim, arch, out_dim, **hp).to(dev)
-
-    # Loss & tensors
-    if out_dim == 1:
-        loss_fn = torch.nn.MSELoss()
-        y_tr_t  = torch.tensor(y_tr, dtype=torch.float32)
-        y_va_t  = torch.tensor(y_va, dtype=torch.float32)
-    else:
-        loss_fn = torch.nn.CrossEntropyLoss(
-            weight=_class_weights(y_tr), label_smoothing=0.05
-        )
-        y_tr_t  = torch.tensor(y_tr, dtype=torch.long).flatten()
-        y_va_t  = torch.tensor(y_va, dtype=torch.long).flatten()
-
-    opt   = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=1e-2)
-    sch   = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=EPOCHS)
-    scaler= torch.cuda.amp.GradScaler(enabled=dev.type == "cuda")
+    lr = hp.pop("lr", DEFAULT_LR)
+    net = get_model(feat_dim, MODEL_TYPE, out_dim, **hp).to(dev)
+    loss_fn = (
+        torch.nn.SmoothL1Loss(beta=0.002)
+        if out_dim == 1
+        else torch.nn.CrossEntropyLoss(weight=_class_w3(y_tr), label_smoothing=0.05)
+    )
+    opt = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=WEIGHT_DECAY)
+    sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=EPOCHS)
+    scaler_amp = torch.cuda.amp.GradScaler(enabled=dev.type == "cuda")
 
     tr_loader = DataLoader(
-        TensorDataset(torch.tensor(X_tr), y_tr_t),
+        TensorDataset(torch.tensor(X_tr), torch.tensor(y_tr)),
         batch_size=BATCH_SIZE,
         shuffle=True,
     )
     va_loader = DataLoader(
-        TensorDataset(torch.tensor(X_va), y_va_t),
-        batch_size=BATCH_SIZE * 2,
+        TensorDataset(torch.tensor(X_va), torch.tensor(y_va)), batch_size=BATCH_SIZE * 2
     )
 
     best_state, best_val, patience = None, float("inf"), 0
     for ep in range(1, EPOCHS + 1):
-        # ---- train ----
         net.train()
         for xb, yb in tr_loader:
             xb, yb = xb.to(dev), yb.to(dev)
             opt.zero_grad(set_to_none=True)
             with torch.cuda.amp.autocast(enabled=dev.type == "cuda"):
-                loss = loss_fn(net(xb.float()).view_as(yb), yb)
-            scaler.scale(loss).backward()
-            scaler.step(opt)
-            scaler.update()
+                l = loss_fn(net(xb.float()).view_as(yb), yb)
+            if not torch.isfinite(l):
+                continue  # skip inf batches
+            scaler_amp.scale(l).backward()
+            scaler_amp.step(opt)
+            scaler_amp.update()
         sch.step()
 
-        # ---- val ----
+        # ----- validation -----
         net.eval()
-        v_ls = []
+        vals = []
         with torch.no_grad():
             for xb, yb in va_loader:
                 xb, yb = xb.to(dev), yb.to(dev)
-                v_ls.append(
-                    loss_fn(net(xb.float()).view_as(yb), yb).item()
-                )
-        v_mean = float(np.mean(v_ls))
-        log.info("[%s] ep %02d/%d  val=%.4f", arch, ep, EPOCHS, v_mean)
+                vals.append(loss_fn(net(xb.float()).view_as(yb), yb).item())
+        v = float(np.nan_to_num(np.mean(vals), nan=1e6, posinf=1e6, neginf=1e6))
+        log.info("[%s] ep %02d val=%.5f", tag, ep, v)
 
-        if v_mean < best_val - 1e-4:
-            best_val, best_state, patience = v_mean, net.state_dict(), 0
+        if v < best_val - 1e-4:
+            best_val, best_state, patience = v, net.state_dict(), 0
         else:
             patience += 1
             if patience >= PATIENCE:
+                log.info("[%s] early stop", tag)
                 break
 
-    # ---- load best ----
     if best_state is not None:
         net.load_state_dict(best_state)
+    return net, best_val
 
-    # Final train loss
-    with torch.no_grad():
-        tr_loss = float(
-            loss_fn(net(torch.tensor(X_tr, device=dev).float()).view_as(y_tr_t.to(dev)),
-                    y_tr_t.to(dev)).item()
+
+# ───────────────────────── public API ───────────────────────
+def _train_one(tgt, req, splits, fcols):
+    res = []
+    idx = TRAIN_TARGETS_PARAMS["target_cols"].index(tgt)
+    for w, (X, y) in enumerate(splits, 1):
+        split = int(0.8 * len(X))
+        Xtr, Xva = X[:split], X[split:]
+        ytr, yva = y[:split, [idx]], y[split:, [idx]]
+
+        if ytr.shape[1] == 1:
+            ytr += np.random.normal(0, 1e-4, ytr.shape)
+
+        sc = StandardScaler().fit(Xtr.reshape(-1, Xtr.shape[-1]))
+        Xtr = sc.transform(Xtr.reshape(-1, Xtr.shape[-1])).reshape(Xtr.shape)
+        Xva = sc.transform(Xva.reshape(-1, Xva.shape[-1])).reshape(Xva.shape)
+
+        hp = _merge_hp(tgt)
+        tag = f"{req.stock_ticker}·{tgt}·W{w}"
+        net, val = _fit(
+            Xtr, ytr, Xva, yva, len(fcols), 3 if _is_cls(ytr, tgt) else 1, hp, tag
         )
-    return net, tr_loss, best_val
 
-# ───────────── Train wrapper per-target ─────────────
-def _train_target(
-    tgt: str,
-    req: UpdateIndicatorsData,
-    X_tr,
-    y_tr_all,
-    X_va,
-    y_va_all,
-    feats,
-    scaler,
-):
-    idx       = TRAIN_TARGETS_PARAMS["target_cols"].index(tgt)
-    y_tr, y_va= y_tr_all[:, [idx]], y_va_all[:, [idx]]
-    is_cls    = _is_classification(y_tr, tgt)
-
-    net, tr, va = _fit(
-        MODEL_TYPE,
-        len(feats),
-        3 if is_cls else 1,
-        X_tr,
-        y_tr,
-        X_va,
-        y_va,
-        _merge_params(tgt),
-    )
-    _save(net, scaler, feats, ticker=req.stock_ticker.upper(), target=tgt)
-    return {"train_loss": tr, "val_loss": va}
-
-# ───────────── Public-API functions ─────────────
-def train_all_base_models(req: UpdateIndicatorsData) -> Dict[str, Dict]:
-    X_tr, y_tr, X_va, y_va, feats, scaler = _prepare_shared(req)
-    res: Dict[str, Dict] = {}
-    with ThreadPoolExecutor(max_workers=min(4, os.cpu_count() or 1)) as pool:
-        futures = {
-            pool.submit(
-                _train_target, tgt, req, X_tr, y_tr, X_va, y_va, feats, scaler
-            ): tgt
-            for tgt in META_PARAMS["base_targets"]
-        }
-        for fut, tgt in futures.items():
-            try:
-                res[tgt] = fut.result()
-            except Exception as e:
-                log.exception("training failed for %s", tgt)
-                res[tgt] = {"error": str(e)}
-    return res
+        if w == len(splits):
+            _save(net, sc, fcols, req.stock_ticker.upper(), tgt, hp)
+        res.append(val)
+    return {"val_loss": float(np.mean(res))}
 
 
-def train_single(req: UpdateIndicatorsData) -> Dict:
-    X_tr, y_tr, X_va, y_va, feats, scaler = _prepare_shared(req)
+def train_single(req: UpdateIndicatorsData):
     tgt = req.model_type or TRAIN_TARGETS_PARAMS["default_target"]
-    return _train_target(tgt, req, X_tr, y_tr, X_va, y_va, feats, scaler)
+    splits, fcols = _prepare(req)
+    return _train_one(tgt, req, splits, fcols)
 
 
-def train_model(request: UpdateIndicatorsData) -> Dict:
-    if request.model_type and request.model_type.upper() == "ALL":
-        return {"status": "batch", "results": train_all_base_models(request)}
-    return {"status": "single", **train_single(request)}
+def train_all_base_models(req: UpdateIndicatorsData):
+    splits, fcols = _prepare(req)
+    out = {}
+    with ThreadPoolExecutor(max_workers=min(4, os.cpu_count() or 1)) as pool:
+        fut = {
+            pool.submit(_train_one, t, req, splits, fcols): t
+            for t in META_PARAMS["base_targets"]
+        }
+        for f, t in fut.items():
+            try:
+                out[t] = f.result()
+            except Exception as e:
+                log.exception("fail %s", t)
+                out[t] = {"error": str(e)}
+    return out
+
+
+if __name__ == "__main__":
+    req = UpdateIndicatorsData(
+        stock_ticker="QQQ",
+        start_date="2005-01-01",
+        end_date=time.strftime("%Y-%m-%d"),
+        indicators=[],
+        model_type="ALL",
+    )
+    print(json.dumps(train_all_base_models(req), indent=2, ensure_ascii=False))
