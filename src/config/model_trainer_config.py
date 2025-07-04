@@ -22,38 +22,22 @@ TRAIN_TARGETS_PARAMS = {
         {"name": "13_Days", "shift": -13},
         {"name": "21_Days", "shift": -21},
     ],
-    "extrema_window": 10,
+    "extrema_window": 10
 }
 
-
 MODEL_TRAINER_PARAMS = {
-    # ───────────── בסיס ─────────────
     "model_type": "TransformerTCN",
-    "epochs": 25,  # 25–30 עם Early-Stopping
+    "epochs": 60,
     "batch_size": 256,
     "seq_len": 60,
-    # ─── היפר-פרמטרים שה-Optuna מצא ───
-    "model_kwargs": {  # <-- מועבר אל get_model(...)
-        "hidden_size": 192,
-        "num_layers": 4,
-        "dropout": 0.10,
-        "lr": 0.0022173,
-        # אם למודל יש num_heads:
-        # "num_heads":     4,
+    "seq_len_map": {1: 40, 2: 60, 3: 60, 5: 80, 8: 120, 13: 120, 21: 120},
+    "model_kwargs": {
+        "hidden_size": 384,
+        "num_layers": 6,
+        "dropout": 0.15
     },
-    # ─────────── רגולריזציה / לימוד ───────────
     "weight_decay": 1e-4,
-    "lr_patience": 3,  # Reduce-LR אם val לא משתפר 3 epochs
-    "lr_factor": 0.5,
-    "min_lr": 1e-6,
-    "early_stopping_patience": 6,  # עצור אחרי 6 epochs בלי שיפור
-    # ─────────── חלוקה ל־Train/Val ───────────
-    "val_ratio": 0.2,  # 20 % אחרונים כ-validation
-    # ─────────── Grid-Trading Parameters ───────────
-    "grid_buying_threshold": [0.00, 0.01, 0.02, 0.05],
-    "grid_selling_threshold": [0.00, 0.005, 0.01, 0.02],
-    "grid_profit_target": [0.02, 0.05, 0.10],
-    "grid_trailing_stop": [0.02, 0.03, 0.05],
-    # ─────────── סוג Target (לוגריתמי) ───────────
-    "target_type": "log",
+    "warmup_pct": 0.20,
+    "early_stopping_patience": 8,
+    "val_ratio": 0.2
 }

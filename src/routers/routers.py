@@ -41,7 +41,7 @@ def train(request: UpdateIndicatorsData):
     if request.model_type and request.model_type.upper() == "ALL":
         return {
             "status": "batch",
-            "results": model_prediction_trainer.train_all_base_models(request),
+            "results": model_prediction_trainer.train_all(request),
         }
 
     # התנהגות קיימת – אימון יעד יחיד
